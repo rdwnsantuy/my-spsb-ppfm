@@ -15,6 +15,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // Register custom middleware aliases
         $middleware->alias([
             'role' => \App\Http\Middleware\RoleMiddleware::class,
+            'form.completed'   => \App\Http\Middleware\EnsureFormCompleted::class,
+            'form.incomplete'  => \App\Http\Middleware\EnsureFormNotCompleted::class,
         ]);
     })
 

@@ -15,6 +15,16 @@ use Illuminate\Validation\Rule;
 
 class PendaftarController extends Controller
 {
+    /** ===== DEFAULT /pendaftar ===== */
+    public function home()
+{
+    $u = auth()->user();
+    return $u->hasCompletedForm()
+        ? redirect()->route('pendaftar.jadwal')
+        : redirect()->route('pendaftar.daftar');
+}
+
+    /** ===== MENU BIASA ===== */
     public function index()
     {
         return view('pendaftar.index');
@@ -30,64 +40,71 @@ class PendaftarController extends Controller
         return view('pendaftar.status');
     }
 
-public function dataPendaftar()
-{
-    $uid = Auth::id();
-    $wali      = Wali::where('user_id', $uid)->orderBy('hubungan_wali')->get();
-    $dataDiri  = DataDiri::where('user_id', $uid)->first();
-    $tujuan    = PendidikanTujuan::where('user_id', $uid)->first();
-    $psb       = InformasiPsb::where('user_id', $uid)->first();
-    $prestasi  = Prestasi::where('user_id', $uid)->first();
-    $kebutuhan = PenyakitKebutuhanKhusus::where('user_id', $uid)->first();
-
-    return view('pendaftar.data-pendaftar', compact('wali','dataDiri','tujuan','psb','prestasi','kebutuhan'));
-}
-
-
-
-    /**
-     * GET: /pendaftar/daftar-pesantren
-     * Tampilkan form (prefill jika data sudah ada).
-     */
-    public function daftarPesantren()
+    /** ===== DATA PENDAFTAR (READ) ===== */
+    public function dataPendaftar()
     {
         $uid = Auth::id();
 
-        $data = [
-            'wali'      => Wali::where('user_id', $uid)->first(), // satu wali untuk form ini
-            'dataDiri'  => DataDiri::where('user_id', $uid)->first(),
-            'tujuan'    => PendidikanTujuan::where('user_id', $uid)->first(),
-            'psb'       => InformasiPsb::where('user_id', $uid)->first(),
-            'prestasi'  => Prestasi::where('user_id', $uid)->first(),
-            'kebutuhan' => PenyakitKebutuhanKhusus::where('user_id', $uid)->first(),
-        ];
+        $wali       = Wali::where('user_id', $uid)->orderBy('hubungan_wali')->get();
+        $dataDiri   = DataDiri::where('user_id', $uid)->first();
+        $tujuan     = PendidikanTujuan::where('user_id', $uid)->first();
+        $psb        = InformasiPsb::where('user_id', $uid)->first();
+        $prestasi   = Prestasi::where('user_id', $uid)->first();
+        $kebutuhan  = PenyakitKebutuhanKhusus::where('user_id', $uid)->first();
 
-        // Opsi enum di form
-        $optPendidikanTujuan = [
-            'SMP dalam Pesantren',
-            'SMA dalam Pesantren',
-            'Perguruan Tinggi',
-            'Tidak Sekolah',
-            'Lainnya',
-        ];
-        $optHubunganWali = ['ayah','ibu','wali','lainnya'];
-        $optInfoPsb      = ['facebook','instagram','tiktok','website','teman','brosur','lainnya'];
-        $optTingkat      = ['ringan','sedang','berat'];
-
-        return view('pendaftar.daftar-pesantren', array_merge($data, compact(
-            'optPendidikanTujuan','optHubunganWali','optInfoPsb','optTingkat'
-        )));
+        return view('pendaftar.data-pendaftar', compact(
+            'wali','dataDiri','tujuan','psb','prestasi','kebutuhan'
+        ));
     }
 
-    /**
-     * POST: /pendaftar/daftar-pesantren
-     * Simpan seluruh data formulir pendaftaran (wali, data diri, tujuan, psb, prestasi, penyakit).
-     */
+    /** ===== DATA PENDAFTAR (EDIT) -> pakai form yang sama ===== */
+    public function editDataPendaftar()
+    {
+        return $this->daftarForm(); // tampilkan form dengan data terisi (edit mode)
+    }
+
+    /** ===== DAFTAR PENDAFTAR : LAPIS 1 (WELCOME) ===== */
+    public function daftarWelcome()
+{
+    return view('pendaftar.daftar-welcome'); // buat view simple berisi ajakan isi form + tombol ke route('pendaftar.daftar.form')
+}
+
+    /** ===== DAFTAR PENDAFTAR : LAPIS 2 (FORM) ===== */
+    public function daftarForm()
+{
+    $uid = \Illuminate\Support\Facades\Auth::id();
+
+    $data = [
+        'wali'      => \App\Models\Wali::where('user_id', $uid)->first(),
+        'dataDiri'  => \App\Models\DataDiri::where('user_id', $uid)->first(),
+        'tujuan'    => \App\Models\PendidikanTujuan::where('user_id', $uid)->first(),
+        'psb'       => \App\Models\InformasiPsb::where('user_id', $uid)->first(),
+        'prestasi'  => \App\Models\Prestasi::where('user_id', $uid)->first(),
+        'kebutuhan' => \App\Models\PenyakitKebutuhanKhusus::where('user_id', $uid)->first(),
+    ];
+
+    $optPendidikanTujuan = [
+        'SMP dalam Pesantren',
+        'SMA dalam Pesantren',
+        'Perguruan Tinggi',
+        'Tidak Sekolah',
+        'Lainnya',
+    ];
+    $optHubunganWali = ['ayah','ibu','wali','lainnya'];
+    $optInfoPsb      = ['facebook','instagram','tiktok','website','teman','brosur','lainnya'];
+    $optTingkat      = ['ringan','sedang','berat'];
+
+    return view('pendaftar.daftar-form', array_merge($data, compact(
+        'optPendidikanTujuan','optHubunganWali','optInfoPsb','optTingkat'
+    )));
+}
+
+
+    /** ===== SUBMIT FORM DAFTAR (UPSERT) ===== */
     public function storeDaftarPesantren(Request $r)
     {
         $uid = Auth::id();
 
-        // untuk rule unique nisn saat update
         $existingDataDiri = DataDiri::where('user_id', $uid)->first();
 
         $validated = $r->validate([
@@ -119,18 +136,17 @@ public function dataPendaftar()
             // Informasi PSB
             'informasi_psb'      => ['required', Rule::in(['facebook','instagram','tiktok','website','teman','brosur','lainnya'])],
 
-            // Prestasi (opsional)
+            // Prestasi
             'prestasi_i'         => ['nullable','string','max:255'],
             'prestasi_ii'        => ['nullable','string','max:255'],
             'prestasi_iii'       => ['nullable','string','max:255'],
 
-            // Penyakit & kebutuhan khusus (opsional)
+            // Penyakit & kebutuhan khusus
             'deskripsi'          => ['nullable','string'],
             'tingkat'            => ['nullable', Rule::in(['ringan','sedang','berat'])],
         ]);
 
         DB::transaction(function () use ($r, $uid) {
-            // Upload file (jika ada) ke disk 'public'
             $fotoDiriPath = $r->hasFile('foto_diri')
                 ? $r->file('foto_diri')->store('berkas/foto_diri', 'public')
                 : null;
@@ -138,7 +154,6 @@ public function dataPendaftar()
                 ? $r->file('foto_kk')->store('berkas/foto_kk', 'public')
                 : null;
 
-            // WALI (single berdasarkan hubungan_wali)
             Wali::updateOrCreate(
                 ['user_id' => $uid, 'hubungan_wali' => $r->hubungan_wali],
                 [
@@ -148,7 +163,6 @@ public function dataPendaftar()
                 ]
             );
 
-            // DATA DIRI (1–1)
             $data = [
                 'nama_lengkap'    => $r->nama_lengkap,
                 'jenis_kelamin'   => $r->jenis_kelamin,
@@ -163,19 +177,16 @@ public function dataPendaftar()
 
             DataDiri::updateOrCreate(['user_id' => $uid], $data);
 
-            // PENDIDIKAN TUJUAN (1–1)
             PendidikanTujuan::updateOrCreate(
                 ['user_id' => $uid],
                 ['pendidikan_tujuan' => $r->pendidikan_tujuan]
             );
 
-            // INFORMASI PSB (anggap 1–1; kalau mau multi, ubah jadi create baru)
             InformasiPsb::updateOrCreate(
                 ['user_id' => $uid],
                 ['informasi_psb' => $r->informasi_psb]
             );
 
-            // PRESTASI (1 baris 3 kolom)
             Prestasi::updateOrCreate(
                 ['user_id' => $uid],
                 [
@@ -185,7 +196,6 @@ public function dataPendaftar()
                 ]
             );
 
-            // PENYAKIT & KEBUTUHAN KHUSUS (1–1 untuk form ini)
             if ($r->filled('deskripsi') || $r->filled('tingkat')) {
                 PenyakitKebutuhanKhusus::updateOrCreate(
                     ['user_id' => $uid],
@@ -197,6 +207,7 @@ public function dataPendaftar()
             }
         });
 
-        return back()->with('ok', 'Form pendaftaran berhasil disimpan.');
+        return redirect()->route('pendaftar.jadwal')
+        ->with('ok', 'Form pendaftaran berhasil disimpan.');
     }
 }

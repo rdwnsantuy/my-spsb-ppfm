@@ -6,28 +6,22 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
 /**
- * Root:
- * - belum login  -> /login
- * - sudah login  -> /dashboard (router pusat)
+ * Root
  */
-Route::get('/', function () {
-    return Auth::check()
-        ? redirect()->route('dashboard')
-        : redirect()->route('login');
-});
+Route::get('/', fn () =>
+    Auth::check() ? redirect()->route('dashboard') : redirect()->route('login')
+);
 
 /**
- * Router pusat "dashboard" -> arahkan sesuai role
+ * Router pusat dashboard
  */
 Route::get('/dashboard', function () {
-    $user = Auth::user();
-    if (! $user) {
-        return redirect()->route('login');
-    }
+    $u = Auth::user();
+    if (! $u) return redirect()->route('login');
 
-    return $user->role === 'admin'
+    return $u->role === 'admin'
         ? redirect()->route('admin.dashboard')
-        : redirect()->route('pendaftar.dashboard');
+        : redirect()->route('pendaftar.dashboard'); // akan di-redirect lagi oleh home()
 })->middleware('auth')->name('dashboard');
 
 /* ===========================
@@ -36,13 +30,25 @@ Route::get('/dashboard', function () {
 Route::middleware(['auth', 'role:pendaftar'])
     ->prefix('pendaftar')->as('pendaftar.')
     ->group(function () {
-        Route::get('/',                 [PendaftarController::class, 'index'])->name('dashboard');
-        Route::get('/jadwal',           [PendaftarController::class, 'jadwal'])->name('jadwal');
-        Route::get('/status',           [PendaftarController::class, 'status'])->name('status');
-        Route::get('/daftar-pesantren', [PendaftarController::class, 'daftarPesantren'])->name('daftar-pesantren');
-        Route::get('/data-pendaftar',   [PendaftarController::class, 'dataPendaftar'])->name('data-pendaftar');
 
-        Route::post('/daftar-pesantren', [PendaftarController::class, 'storeDaftarPesantren'])->name('daftar-pesantren.store');
+        // Halaman default pendaftar -> auto redirect ke DAFTAR (kalau belum isi) atau JADWAL (kalau sudah)
+        Route::get('/', [PendaftarController::class, 'home'])->name('dashboard');
+
+        // Hanya untuk yang BELUM isi form
+        Route::middleware('form.incomplete')->group(function () {
+            Route::get('/daftar',      [PendaftarController::class, 'daftarWelcome'])->name('daftar');       // lapis 1 (welcome)
+            Route::get('/daftar/form', [PendaftarController::class, 'daftarForm'])->name('daftar.form');     // lapis 2 (form)
+            Route::post('/daftar/form',[PendaftarController::class, 'storeDaftarPesantren'])->name('daftar.store');
+        });
+
+        // Hanya untuk yang SUDAH isi form
+        Route::middleware('form.completed')->group(function () {
+            Route::get('/jadwal',             [PendaftarController::class, 'jadwal'])->name('jadwal');
+            Route::get('/data-pendaftar',     [PendaftarController::class, 'dataPendaftar'])->name('data-pendaftar');
+            Route::get('/data-pendaftar/edit',[PendaftarController::class, 'editDataPendaftar'])->name('data-pendaftar.edit');
+            Route::post('/data-pendaftar/edit',[PendaftarController::class, 'storeDaftarPesantren'])->name('data-pendaftar.update');
+            Route::get('/status',             [PendaftarController::class, 'status'])->name('status');
+        });
     });
 
 /* ===========================
@@ -51,11 +57,11 @@ Route::middleware(['auth', 'role:pendaftar'])
 Route::middleware(['auth', 'role:admin'])
     ->prefix('admin')->as('admin.')
     ->group(function () {
-        Route::get('/',                    [AdminController::class, 'index'])->name('dashboard');
-        Route::get('/verifikasi-pembayaran',[AdminController::class, 'verifikasiPembayaran'])->name('verifikasi-pembayaran');
-        Route::get('/jadwal-seleksi',      [AdminController::class, 'jadwalSeleksi'])->name('jadwal-seleksi');
-        Route::get('/data-pendaftar',      [AdminController::class, 'dataPendaftar'])->name('data-pendaftar');
-        Route::get('/soal-seleksi',        [AdminController::class, 'soalSeleksi'])->name('soal-seleksi');
+        Route::get('/', [AdminController::class, 'index'])->name('dashboard');
+        Route::get('/verifikasi-pembayaran', [AdminController::class, 'verifikasiPembayaran'])->name('verifikasi-pembayaran');
+        Route::get('/jadwal-seleksi',        [AdminController::class, 'jadwalSeleksi'])->name('jadwal-seleksi');
+        Route::get('/data-pendaftar',        [AdminController::class, 'dataPendaftar'])->name('data-pendaftar');
+        Route::get('/soal-seleksi',          [AdminController::class, 'soalSeleksi'])->name('soal-seleksi');
     });
 
 require __DIR__.'/auth.php';

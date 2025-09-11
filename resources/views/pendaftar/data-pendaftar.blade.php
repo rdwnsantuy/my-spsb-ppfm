@@ -10,10 +10,11 @@
         {{-- Aksi cepat --}}
         <div class="flex items-center justify-between">
             <p class="text-sm text-gray-600">Ringkasan semua data yang sudah kamu isi.</p>
-            <a href="{{ route('pendaftar.daftar-pesantren') }}"
-                class="inline-flex items-center px-3 py-2 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">
-                Ubah / Lengkapi Data
-            </a>
+<a href="{{ route('pendaftar.data-pendaftar.edit') }}"
+   class="inline-flex items-center px-3 py-2 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700">
+    Ubah / Lengkapi Data
+</a>
+
         </div>
 
         {{-- SATU SECTION BESAR --}}
