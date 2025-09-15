@@ -1,5 +1,11 @@
 {{-- resources/views/layouts/navigation.blade.php --}}
 <nav x-data="{ open: false }">
+    @php
+        $u = auth()->user();
+        $isAdmin   = $u && $u->role === 'admin';
+        // Cek apakah pendaftar sudah isi formulir (punya DataDiri)
+        $hasFilled = $u && \App\Models\DataDiri::where('user_id', $u->id)->exists();
+    @endphp
 
     {{-- ========== TOPBAR (mobile only) ========== --}}
     <div class="md:hidden bg-white border-b border-gray-200">
@@ -21,13 +27,8 @@
 
         <div x-show="open" x-transition class="border-t border-gray-200">
             <div class="py-2 space-y-1">
-                @auth
-                    @php
-                        $u = auth()->user();
-                        $isAdmin = $u->role === 'admin';
-                        $completed = $isAdmin ? false : $u->hasCompletedForm();
-                    @endphp
 
+                @auth
                     @if ($isAdmin)
                         <a href="{{ route('admin.dashboard') }}"
                            class="block px-4 py-2 text-sm {{ request()->routeIs('admin.dashboard') ? 'text-indigo-600 font-medium' : 'text-gray-700 hover:bg-gray-50' }}">Dashboard</a>
@@ -40,7 +41,8 @@
                         <a href="{{ route('admin.soal-seleksi') }}"
                            class="block px-4 py-2 text-sm {{ request()->routeIs('admin.soal-seleksi') ? 'text-indigo-600 font-medium' : 'text-gray-700 hover:bg-gray-50' }}">Soal Seleksi</a>
                     @else
-                        @if (! $completed)
+                        {{-- Pendaftar --}}
+                        @if (! $hasFilled)
                             <a href="{{ route('pendaftar.daftar') }}"
                                class="block px-4 py-2 text-sm {{ request()->routeIs('pendaftar.daftar*') ? 'text-indigo-600 font-medium' : 'text-gray-700 hover:bg-gray-50' }}">Daftar Pesantren</a>
                         @else
@@ -51,45 +53,40 @@
                             <a href="{{ route('pendaftar.status') }}"
                                class="block px-4 py-2 text-sm {{ request()->routeIs('pendaftar.status') ? 'text-indigo-600 font-medium' : 'text-gray-700 hover:bg-gray-50' }}">Status</a>
                         @endif
-                    @endif
-                @endauth
 
-                @guest
+                        <div class="px-4 pt-2 text-xs text-gray-500">{{ auth()->user()->email }}</div>
+                        <form method="POST" action="{{ route('logout') }}" class="px-4 pb-2">
+                            @csrf
+                            <button type="submit" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                Logout
+                            </button>
+                        </form>
+                    @endif
+                @else
                     <a href="{{ route('login') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Login</a>
                     <a href="{{ route('register') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Register</a>
-                @endguest
-
-                {{-- blok auth terpisah untuk info & logout (jangan pakai @else pada @guest) --}}
-                @auth
-                    <div class="px-4 pt-2 text-xs text-gray-500">{{ auth()->user()->email }}</div>
-                    <form method="POST" action="{{ route('logout') }}" class="px-4 pb-2">
-                        @csrf
-                        <button type="submit" class="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">Logout</button>
-                    </form>
                 @endauth
+
             </div>
         </div>
     </div>
 
     {{-- ========== SIDEBAR KIRI (desktop) ========== --}}
     <aside class="hidden md:fixed md:inset-y-0 md:left-0 md:z-40 md:flex md:w-64 md:flex-col bg-gray-100 border-r border-gray-200">
+
+        {{-- Header user --}}
         <div class="h-16 flex items-center px-6 bg-gray-700 text-white">
-            @php($u = auth()->user())
-            @if ($u)
+            @auth
                 <span class="font-semibold tracking-wide">{{ $u->name }}</span>
                 <span class="ml-3 text-sm font-medium text-gray-300">{{ ucfirst($u->role) }}</span>
             @else
                 <span class="font-semibold">{{ config('app.name', 'Laravel') }}</span>
-            @endif
+            @endauth
         </div>
 
+        {{-- Menu --}}
         <nav class="flex-1 px-3 py-4 space-y-1">
             @auth
-                @php
-                    $isAdmin = auth()->user()->role === 'admin';
-                    $completed = $isAdmin ? false : auth()->user()->hasCompletedForm();
-                @endphp
-
                 @if ($isAdmin)
                     <a href="{{ route('admin.dashboard') }}"
                        class="block rounded-md px-3 py-2 text-sm {{ request()->routeIs('admin.dashboard') ? 'bg-gray-300 text-gray-900 font-medium' : 'text-gray-700 hover:bg-gray-200' }}">Dashboard</a>
@@ -102,29 +99,22 @@
                     <a href="{{ route('admin.soal-seleksi') }}"
                        class="block rounded-md px-3 py-2 text-sm {{ request()->routeIs('admin.soal-seleksi') ? 'bg-gray-300 text-gray-900 font-medium' : 'text-gray-700 hover:bg-gray-200' }}">Soal Seleksi</a>
                 @else
-                    @if (! $completed)
+                    @if (! $hasFilled)
                         <a href="{{ route('pendaftar.daftar') }}"
-                           class="block rounded-md px-3 py-2 text-sm {{ request()->routeIs('pendaftar.daftar*') ? 'bg-gray-300 text-gray-900 font-medium' : 'text-gray-700 hover:bg-gray-200' }}">
-                            Daftar Pesantren
-                        </a>
+                           class="block rounded-md px-3 py-2 text-sm {{ request()->routeIs('pendaftar.daftar*') ? 'bg-gray-300 text-gray-900 font-medium' : 'text-gray-700 hover:bg-gray-200' }}">Daftar Pesantren</a>
                     @else
                         <a href="{{ route('pendaftar.jadwal') }}"
-                           class="block rounded-md px-3 py-2 text-sm {{ request()->routeIs('pendaftar.jadwal') ? 'bg-gray-300 text-gray-900 font-medium' : 'text-gray-700 hover:bg-gray-200' }}">
-                            Jadwal Seleksi
-                        </a>
+                           class="block rounded-md px-3 py-2 text-sm {{ request()->routeIs('pendaftar.jadwal') ? 'bg-gray-300 text-gray-900 font-medium' : 'text-gray-700 hover:bg-gray-200' }}">Jadwal Seleksi</a>
                         <a href="{{ route('pendaftar.data-pendaftar') }}"
-                           class="block rounded-md px-3 py-2 text-sm {{ request()->routeIs('pendaftar.data-pendaftar*') ? 'bg-gray-300 text-gray-900 font-medium' : 'text-gray-700 hover:bg-gray-200' }}">
-                            Data Pendaftar
-                        </a>
+                           class="block rounded-md px-3 py-2 text-sm {{ request()->routeIs('pendaftar.data-pendaftar*') ? 'bg-gray-300 text-gray-900 font-medium' : 'text-gray-700 hover:bg-gray-200' }}">Data Pendaftar</a>
                         <a href="{{ route('pendaftar.status') }}"
-                           class="block rounded-md px-3 py-2 text-sm {{ request()->routeIs('pendaftar.status') ? 'bg-gray-300 text-gray-900 font-medium' : 'text-gray-700 hover:bg-gray-200' }}">
-                            Status
-                        </a>
+                           class="block rounded-md px-3 py-2 text-sm {{ request()->routeIs('pendaftar.status') ? 'bg-gray-300 text-gray-900 font-medium' : 'text-gray-700 hover:bg-gray-200' }}">Status</a>
                     @endif
                 @endif
             @endauth
         </nav>
 
+        {{-- Footer (login/logout) --}}
         <div class="border-t border-gray-200 p-4">
             @auth
                 <div class="text-xs text-gray-500 truncate mb-2">{{ auth()->user()->email }}</div>
@@ -135,16 +125,14 @@
                         Logout
                     </button>
                 </form>
-            @endauth
-
-            @guest
+            @else
                 <div class="flex gap-2">
                     <a href="{{ route('login') }}"
                        class="inline-flex items-center px-3 py-2 rounded-md text-sm bg-gray-200 hover:bg-gray-300 text-gray-800">Login</a>
                     <a href="{{ route('register') }}"
                        class="inline-flex items-center px-3 py-2 rounded-md text-sm bg-indigo-600 text-white hover:bg-indigo-700">Register</a>
                 </div>
-            @endguest
+            @endauth
         </div>
     </aside>
 </nav>

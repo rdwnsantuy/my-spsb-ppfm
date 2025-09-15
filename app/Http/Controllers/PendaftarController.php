@@ -8,36 +8,74 @@ use App\Models\PendidikanTujuan;
 use App\Models\InformasiPsb;
 use App\Models\Prestasi;
 use App\Models\PenyakitKebutuhanKhusus;
+use App\Models\PembayaranPendaftaran;
+use App\Models\PembayaranDaftarUlang;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Carbon;
 
 class PendaftarController extends Controller
 {
     /** ===== DEFAULT /pendaftar ===== */
     public function home()
-{
-    $u = auth()->user();
-    return $u->hasCompletedForm()
-        ? redirect()->route('pendaftar.jadwal')
-        : redirect()->route('pendaftar.daftar');
-}
-
-    /** ===== MENU BIASA ===== */
-    public function index()
     {
-        return view('pendaftar.index');
+        $u = auth()->user();
+
+        if (method_exists($u, 'hasCompletedForm')) {
+            return $u->hasCompletedForm()
+                ? redirect()->route('pendaftar.jadwal')
+                : redirect()->route('pendaftar.daftar');
+        }
+
+        $sudahIsi = DataDiri::where('user_id', $u->id)->exists();
+        return $sudahIsi
+            ? redirect()->route('pendaftar.jadwal')
+            : redirect()->route('pendaftar.daftar');
     }
 
+    /** ===== MENU BIASA (opsional) ===== */
+    public function index() { return view('pendaftar.index'); }
+
+    /**
+     * JADWAL: tempat upload bukti PEMBAYARAN PENDAFTARAN & gate akses ujian
+     */
     public function jadwal()
     {
-        return view('pendaftar.jadwal');
+        $uid    = Auth::id();
+        $bayarP = PembayaranPendaftaran::where('user_id', $uid)->latest()->first();
+
+        $blocked = false;
+        $reason  = null;
+        $note    = null;
+
+        if (! $bayarP) {
+            $blocked = true;
+            $reason  = 'Kamu belum mengunggah bukti pembayaran pendaftaran.';
+        } elseif ($bayarP->status === 'pending') {
+            $blocked = true;
+            $reason  = 'Pembayaran pendaftaran masih menunggu verifikasi admin.';
+            $note    = $bayarP->catatan;
+        } elseif ($bayarP->status === 'rejected') {
+            $blocked = true;
+            $reason  = 'Pembayaran pendaftaran ditolak. Silakan unggah ulang bukti yang valid.';
+            $note    = $bayarP->catatan;
+        }
+
+        return view('pendaftar.jadwal', compact('blocked','reason','note','bayarP'));
     }
 
+    /**
+     * STATUS: tampilkan status & tempat upload bukti PEMBAYARAN DAFTAR ULANG
+     */
     public function status()
     {
-        return view('pendaftar.status');
+        $uid    = Auth::id();
+        $bayarP = PembayaranPendaftaran::where('user_id', $uid)->latest()->first();
+        $bayarU = PembayaranDaftarUlang::where('user_id', $uid)->latest()->first();
+
+        return view('pendaftar.status', compact('bayarP','bayarU'));
     }
 
     /** ===== DATA PENDAFTAR (READ) ===== */
@@ -57,57 +95,59 @@ class PendaftarController extends Controller
         ));
     }
 
-    /** ===== DATA PENDAFTAR (EDIT) -> pakai form yang sama ===== */
+    /** ===== EDIT DATA -> pakai form yang sama ===== */
     public function editDataPendaftar()
     {
-        return $this->daftarForm(); // tampilkan form dengan data terisi (edit mode)
+        return $this->daftarForm(); // view akan tahu ini edit lewat route name
     }
 
     /** ===== DAFTAR PENDAFTAR : LAPIS 1 (WELCOME) ===== */
     public function daftarWelcome()
-{
-    return view('pendaftar.daftar-welcome'); // buat view simple berisi ajakan isi form + tombol ke route('pendaftar.daftar.form')
-}
+    {
+        return view('pendaftar.daftar-welcome');
+    }
 
     /** ===== DAFTAR PENDAFTAR : LAPIS 2 (FORM) ===== */
     public function daftarForm()
-{
-    $uid = \Illuminate\Support\Facades\Auth::id();
+    {
+        $uid = Auth::id();
 
-    $data = [
-        'wali'      => \App\Models\Wali::where('user_id', $uid)->first(),
-        'dataDiri'  => \App\Models\DataDiri::where('user_id', $uid)->first(),
-        'tujuan'    => \App\Models\PendidikanTujuan::where('user_id', $uid)->first(),
-        'psb'       => \App\Models\InformasiPsb::where('user_id', $uid)->first(),
-        'prestasi'  => \App\Models\Prestasi::where('user_id', $uid)->first(),
-        'kebutuhan' => \App\Models\PenyakitKebutuhanKhusus::where('user_id', $uid)->first(),
-    ];
+        $data = [
+            'wali'      => Wali::where('user_id', $uid)->first(),
+            'dataDiri'  => DataDiri::where('user_id', $uid)->first(),
+            'tujuan'    => PendidikanTujuan::where('user_id', $uid)->first(),
+            'psb'       => InformasiPsb::where('user_id', $uid)->first(),
+            'prestasi'  => Prestasi::where('user_id', $uid)->first(),
+            'kebutuhan' => PenyakitKebutuhanKhusus::where('user_id', $uid)->first(),
+        ];
 
-    $optPendidikanTujuan = [
-        'SMP dalam Pesantren',
-        'SMA dalam Pesantren',
-        'Perguruan Tinggi',
-        'Tidak Sekolah',
-        'Lainnya',
-    ];
-    $optHubunganWali = ['ayah','ibu','wali','lainnya'];
-    $optInfoPsb      = ['facebook','instagram','tiktok','website','teman','brosur','lainnya'];
-    $optTingkat      = ['ringan','sedang','berat'];
+        $optPendidikanTujuan = [
+            'SMP dalam Pesantren','SMA dalam Pesantren','Perguruan Tinggi','Tidak Sekolah','Lainnya',
+        ];
+        $optHubunganWali = ['ayah','ibu','wali','lainnya'];
+        $optInfoPsb      = ['facebook','instagram','tiktok','website','teman','brosur','lainnya'];
+        $optTingkat      = ['ringan','sedang','berat'];
 
-    return view('pendaftar.daftar-form', array_merge($data, compact(
-        'optPendidikanTujuan','optHubunganWali','optInfoPsb','optTingkat'
-    )));
-}
+        // === info untuk view ===
+        $isEdit = request()->routeIs('pendaftar.data-pendaftar.edit');
+        $valTanggal = old('tanggal_lahir');
+        if (! $valTanggal) {
+            $raw = $data['dataDiri']->tanggal_lahir ?? null;
+            $valTanggal = $raw ? Carbon::parse($raw)->format('Y-m-d') : '';
+        }
 
+        return view('pendaftar.daftar-form', array_merge($data, compact(
+            'optPendidikanTujuan','optHubunganWali','optInfoPsb','optTingkat','isEdit','valTanggal'
+        )));
+    }
 
     /** ===== SUBMIT FORM DAFTAR (UPSERT) ===== */
     public function storeDaftarPesantren(Request $r)
     {
         $uid = Auth::id();
-
         $existingDataDiri = DataDiri::where('user_id', $uid)->first();
 
-        $validated = $r->validate([
+        $r->validate([
             // Wali
             'nama_wali'          => ['required','string','max:255'],
             'hubungan_wali'      => ['required', Rule::in(['ayah','ibu','wali','lainnya'])],
@@ -120,18 +160,13 @@ class PendaftarController extends Controller
             'kabupaten_lahir'    => ['required','string','max:100'],
             'tanggal_lahir'      => ['required','date'],
             'foto_diri'          => ['nullable','image','mimes:jpg,jpeg,png,webp','max:2048'],
-            'nisn'               => [
-                'nullable','string','max:20',
-                Rule::unique('data_diris','nisn')->ignore($existingDataDiri?->id),
-            ],
+            'nisn'               => ['nullable','string','max:20', Rule::unique('data_diris','nisn')->ignore($existingDataDiri?->id)],
             'alamat_domisili'    => ['required','string','max:255'],
             'foto_kk'            => ['nullable','mimes:jpg,jpeg,png,webp,pdf','max:4096'],
             'no_kk'              => ['nullable','string','max:32'],
 
             // Pendidikan tujuan
-            'pendidikan_tujuan'  => ['required', Rule::in([
-                'SMP dalam Pesantren','SMA dalam Pesantren','Perguruan Tinggi','Tidak Sekolah','Lainnya',
-            ])],
+            'pendidikan_tujuan'  => ['required', Rule::in(['SMP dalam Pesantren','SMA dalam Pesantren','Perguruan Tinggi','Tidak Sekolah','Lainnya'])],
 
             // Informasi PSB
             'informasi_psb'      => ['required', Rule::in(['facebook','instagram','tiktok','website','teman','brosur','lainnya'])],
@@ -147,27 +182,22 @@ class PendaftarController extends Controller
         ]);
 
         DB::transaction(function () use ($r, $uid) {
-            $fotoDiriPath = $r->hasFile('foto_diri')
-                ? $r->file('foto_diri')->store('berkas/foto_diri', 'public')
-                : null;
-            $fotoKkPath = $r->hasFile('foto_kk')
-                ? $r->file('foto_kk')->store('berkas/foto_kk', 'public')
-                : null;
+            // Upload file
+            $fotoDiriPath = $r->hasFile('foto_diri') ? $r->file('foto_diri')->store('berkas/foto_diri', 'public') : null;
+            $fotoKkPath   = $r->hasFile('foto_kk')   ? $r->file('foto_kk')->store('berkas/foto_kk', 'public')   : null;
 
+            // WALI
             Wali::updateOrCreate(
                 ['user_id' => $uid, 'hubungan_wali' => $r->hubungan_wali],
-                [
-                    'nama_wali'          => $r->nama_wali,
-                    'rerata_penghasilan' => $r->rerata_penghasilan,
-                    'no_telp'            => $r->no_telp_wali,
-                ]
+                ['nama_wali' => $r->nama_wali, 'rerata_penghasilan' => $r->rerata_penghasilan, 'no_telp' => $r->no_telp_wali]
             );
 
+            // DATA DIRI
             $data = [
                 'nama_lengkap'    => $r->nama_lengkap,
                 'jenis_kelamin'   => $r->jenis_kelamin,
                 'kabupaten_lahir' => $r->kabupaten_lahir,
-                'tanggal_lahir'   => $r->tanggal_lahir,
+                'tanggal_lahir'   => $r->tanggal_lahir, // 'Y-m-d' dari input date
                 'nisn'            => $r->nisn,
                 'alamat_domisili' => $r->alamat_domisili,
                 'no_kk'           => $r->no_kk,
@@ -177,37 +207,27 @@ class PendaftarController extends Controller
 
             DataDiri::updateOrCreate(['user_id' => $uid], $data);
 
-            PendidikanTujuan::updateOrCreate(
-                ['user_id' => $uid],
-                ['pendidikan_tujuan' => $r->pendidikan_tujuan]
-            );
-
-            InformasiPsb::updateOrCreate(
-                ['user_id' => $uid],
-                ['informasi_psb' => $r->informasi_psb]
-            );
-
-            Prestasi::updateOrCreate(
-                ['user_id' => $uid],
-                [
-                    'prestasi_i'   => $r->prestasi_i,
-                    'prestasi_ii'  => $r->prestasi_ii,
-                    'prestasi_iii' => $r->prestasi_iii,
-                ]
-            );
+            // Lainnya
+            PendidikanTujuan::updateOrCreate(['user_id' => $uid], ['pendidikan_tujuan' => $r->pendidikan_tujuan]);
+            InformasiPsb::updateOrCreate(['user_id' => $uid], ['informasi_psb' => $r->informasi_psb]);
+            Prestasi::updateOrCreate(['user_id' => $uid], [
+                'prestasi_i' => $r->prestasi_i,
+                'prestasi_ii' => $r->prestasi_ii,
+                'prestasi_iii' => $r->prestasi_iii,
+            ]);
 
             if ($r->filled('deskripsi') || $r->filled('tingkat')) {
                 PenyakitKebutuhanKhusus::updateOrCreate(
                     ['user_id' => $uid],
-                    [
-                        'deskripsi' => $r->deskripsi,
-                        'tingkat'   => $r->tingkat,
-                    ]
+                    ['deskripsi' => $r->deskripsi, 'tingkat' => $r->tingkat]
                 );
             }
         });
 
-        return redirect()->route('pendaftar.jadwal')
-        ->with('ok', 'Form pendaftaran berhasil disimpan.');
+        // Redirect dinamis: kalau submit dari halaman edit → balik ke Data Pendaftar
+        $fromEdit = $r->routeIs('pendaftar.data-pendaftar.update');
+        return $fromEdit
+            ? redirect()->route('pendaftar.data-pendaftar')->with('ok', 'Data berhasil diperbarui.')
+            : redirect()->route('pendaftar.jadwal')->with('ok', 'Form pendaftaran berhasil disimpan.');
     }
 }
