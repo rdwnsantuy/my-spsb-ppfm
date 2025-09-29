@@ -1,125 +1,71 @@
 <x-app-layout>
     <x-slot name="header">
-        <h2 class="font-semibold text-xl">Ujian Seleksi</h2>
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">Ujian Seleksi</h2>
     </x-slot>
 
-    <div class="max-w-6xl mx-auto space-y-6">
-        {{-- Flash --}}
-        @if(session('ok'))
-            <div class="p-3 rounded bg-green-50 text-green-700 border border-green-200">
-                {{ session('ok') }}
-            </div>
-        @endif
-        @if(session('warning'))
-            <div class="p-3 rounded bg-yellow-50 text-yellow-700 border border-yellow-200">
-                {{ session('warning') }}
-            </div>
-        @endif
-        @if(session('error'))
-            <div class="p-3 rounded bg-red-50 text-red-700 border border-red-200">
-                {{ session('error') }}
-            </div>
-        @endif
+    @php
+        // guard: kalau controller lupa kirim, jadikan koleksi kosong agar view tetap aman
+        $pakets = $pakets ?? collect();
+    @endphp
 
-        @if($pakets->isEmpty())
-            <div class="bg-white rounded shadow p-6">
-                <p class="text-gray-700">Belum ada paket ujian yang tersedia.</p>
+    <div class="max-w-5xl mx-auto">
+        <div class="bg-white rounded shadow p-6">
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm border border-gray-200 rounded">
+                    <thead class="bg-gray-50 text-gray-600">
+                        <tr>
+                            <th class="px-4 py-3 text-left">Nama Paket</th>
+                            <th class="px-4 py-3 text-left">Durasi (menit)</th>
+                            <th class="px-4 py-3 text-left">Periode</th>
+                            <th class="px-4 py-3 text-left">Aksi</th>
+                        </tr>
+                    </thead>
 
-                @if(\Illuminate\Support\Facades\Route::has('pendaftar.jadwal'))
-                    <a href="{{ route('pendaftar.jadwal') }}"
-                       class="inline-flex items-center mt-4 px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm">
-                        Kembali
-                    </a>
-                @endif
-            </div>
-        @else
-            <div class="bg-white rounded shadow p-6">
-                @php($now = \Illuminate\Support\Carbon::now())
+                    <tbody class="divide-y divide-gray-200">
+                        @forelse($pakets as $p)
+                            @php
+                                $start  = $p->mulai_pada ?? $p->start_at ?? null;
+                                $end    = $p->selesai_pada ?? $p->end_at ?? null;
+                                $mulai  = $start ? \Illuminate\Support\Carbon::parse($start) : null;
+                                $selesai= $end   ? \Illuminate\Support\Carbon::parse($end)   : null;
 
-                <div class="overflow-x-auto">
-                    <table class="min-w-full text-sm border border-gray-200 rounded">
-                        <thead class="bg-gray-50 text-gray-600">
+                                // tombol aktif kalau sudah dalam rentang waktu
+                                $active = (!$mulai || now()->gte($mulai)) && (!$selesai || now()->lte($selesai));
+                            @endphp
                             <tr>
-                                <th class="px-4 py-3 text-left">Nama Paket</th>
-                                <th class="px-4 py-3 text-left">Durasi (menit)</th>
-                                <th class="px-4 py-3 text-left">Periode</th>
-                                <th class="px-4 py-3 text-left">Status</th>
-                                <th class="px-4 py-3 text-left">Aksi</th>
+                                <td class="px-4 py-3 font-medium">
+                                    {{ $p->nama_paket ?? $p->nama ?? '-' }}
+                                </td>
+                                <td class="px-4 py-3">
+                                    {{ $p->durasi_menit ?? $p->durasi ?? '—' }}
+                                </td>
+                                <td class="px-4 py-3">
+                                    {{ $mulai ? $mulai->format('d/m/Y H:i') : '—' }}
+                                    —
+                                    {{ $selesai ? $selesai->format('d/m/Y H:i') : '—' }}
+                                </td>
+                                <td class="px-4 py-3">
+                                    <a href="{{ route('pendaftar.ujian.start', $p->id) }}"
+                                       class="inline-flex items-center px-3 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-700 text-sm {{ $active ? '' : 'opacity-50 cursor-not-allowed pointer-events-none' }}">
+                                        Mulai Ujian
+                                    </a>
+                                </td>
                             </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-200">
-                            @foreach($pakets as $p)
-                                @php
-                                    // Pastikan objek waktu
-                                    $start = $p->mulai_pada ? \Illuminate\Support\Carbon::parse($p->mulai_pada) : null;
-                                    $end   = $p->selesai_pada ? \Illuminate\Support\Carbon::parse($p->selesai_pada) : null;
-
-                                    // Logika boleh mulai: (now >= start atau start null) dan (now <= end atau end null)
-                                    $canStart = (!$start || $now->gte($start)) && (!$end || $now->lte($end));
-
-                                    // Label status
-                                    if ($start && $now->lt($start)) {
-                                        $statusLabel = 'Belum dibuka';
-                                        $statusBadge = 'bg-blue-100 text-blue-700';
-                                    } elseif ($end && $now->gt($end)) {
-                                        $statusLabel = 'Selesai';
-                                        $statusBadge = 'bg-gray-200 text-gray-700';
-                                    } elseif ($canStart) {
-                                        $statusLabel = $start || $end ? 'Sedang berlangsung' : 'Siap';
-                                        $statusBadge = 'bg-green-100 text-green-700';
-                                    } else {
-                                        $statusLabel = 'Tidak tersedia';
-                                        $statusBadge = 'bg-gray-100 text-gray-700';
-                                    }
-
-                                    // Periode teks
-                                    $periode = trim(
-                                        ($start ? $start->format('d/m/Y H:i') : '—')
-                                        .' — '.
-                                        ($end ? $end->format('d/m/Y H:i') : '—')
-                                    );
-
-                                    // Tooltip alasan disable
-                                    $whyDisabled = $start && $now->lt($start)
-                                        ? 'Belum masuk waktu mulai'
-                                        : ($end && $now->gt($end) ? 'Periode telah berakhir' : '');
-                                @endphp
-
-                                <tr>
-                                    <td class="px-4 py-3 font-medium">{{ $p->nama_paket }}</td>
-                                    <td class="px-4 py-3">{{ $p->durasi_menit }}</td>
-                                    <td class="px-4 py-3">{{ $periode }}</td>
-                                    <td class="px-4 py-3">
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded {{ $statusBadge }}">
-                                            {{ $statusLabel }}
-                                        </span>
-                                    </td>
-                                    <td class="px-4 py-3">
-                                        @if(\Illuminate\Support\Facades\Route::has('pendaftar.ujian.start'))
-                                            <a href="{{ $canStart ? route('pendaftar.ujian.start', $p->id) : '#' }}"
-                                               @if(!$canStart) aria-disabled="true" title="{{ $whyDisabled }}" @endif
-                                               class="inline-flex items-center px-3 py-2 rounded text-sm
-                                                      {{ $canStart ? 'bg-indigo-600 text-white hover:bg-indigo-700'
-                                                                   : 'bg-gray-200 text-gray-500 cursor-not-allowed' }}">
-                                                Mulai Ujian
-                                            </a>
-                                        @else
-                                            <span class="text-xs text-gray-500">Route belum tersedia</span>
-                                        @endif
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-
-                @if(\Illuminate\Support\Facades\Route::has('pendaftar.jadwal'))
-                    <a href="{{ route('pendaftar.jadwal') }}"
-                       class="inline-flex items-center mt-4 px-3 py-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm">
-                        Kembali
-                    </a>
-                @endif
+                        @empty
+                            <tr>
+                                <td colspan="4" class="px-4 py-6 text-center text-gray-500">
+                                    Belum ada paket ujian yang tersedia.
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
             </div>
-        @endif
+
+            <a href="{{ route('pendaftar.jadwal') }}"
+               class="inline-flex items-center mt-4 px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-800 text-sm">
+               Kembali
+            </a>
+        </div>
     </div>
 </x-app-layout>
