@@ -24,10 +24,11 @@ class AdminController extends Controller
                     'jenis'       => 'pendaftaran',
                     'user'        => $r->user,
                     'foto_bukti'  => $r->foto_bukti,
-                    'status'      => $r->status,
+                    'status'      => $r->status,     // enum: pending|accepted|rejected
                     'verified_by' => $r->verified_by,
                     'verified_at' => $r->verified_at,
-                    'catatan'     => $r->catatan,
+                    // pakai note jika ada, fallback ke catatan bila skema lama
+                    'note'        => $r->note ?? $r->catatan,
                     'created_at'  => $r->created_at,
                 ];
             });
@@ -42,7 +43,7 @@ class AdminController extends Controller
                     'status'      => $r->status,
                     'verified_by' => $r->verified_by,
                     'verified_at' => $r->verified_at,
-                    'catatan'     => $r->catatan,
+                    'note'        => $r->note ?? $r->catatan,
                     'created_at'  => $r->created_at,
                 ];
             });
@@ -72,8 +73,15 @@ class AdminController extends Controller
     public function terimaPembayaran(string $jenis, int $id)
     {
         $row = $this->findByJenis($jenis, $id);
+
         $row->status      = 'accepted';
-        $row->catatan     = null;               // bersihkan catatan jika ada
+        // tulis ke kolom 'note' bila ada, jika tidak ada pakai 'catatan'
+        if ($this->hasColumn($row, 'note')) {
+            $row->note = null;
+        } elseif ($this->hasColumn($row, 'catatan')) {
+            $row->catatan = null;
+        }
+
         $row->verified_by = Auth::id();
         $row->verified_at = now();
         $row->save();
@@ -84,12 +92,19 @@ class AdminController extends Controller
     public function tolakPembayaran(string $jenis, int $id, Request $r)
     {
         $r->validate([
-            'catatan' => ['required','string','max:500'],
+            'alasan' => ['required','string','max:500'], // pakai name="alasan" di form
         ]);
 
         $row = $this->findByJenis($jenis, $id);
         $row->status      = 'rejected';
-        $row->catatan     = $r->input('catatan'); // ← SIMPAN CATATAN DI SINI
+
+        // simpan alasan ke field yang benar
+        if ($this->hasColumn($row, 'note')) {
+            $row->note = $r->input('alasan');
+        } elseif ($this->hasColumn($row, 'catatan')) {
+            $row->catatan = $r->input('alasan');
+        }
+
         $row->verified_by = Auth::id();
         $row->verified_at = now();
         $row->save();
@@ -102,5 +117,15 @@ class AdminController extends Controller
         return $jenis === 'daftar-ulang'
             ? PembayaranDaftarUlang::findOrFail($id)
             : PembayaranPendaftaran::findOrFail($id);
+    }
+
+    /**
+     * Cek cepat apakah model punya kolom tertentu (berdasar atribut yang ter-load).
+     * Ini menghindari update ke kolom yang tidak ada (yang menyebabkan error 1054).
+     */
+    private function hasColumn($model, string $attr): bool
+    {
+        // Jika atribut sudah ada di array attributes(), kita anggap kolomnya ada.
+        return array_key_exists($attr, $model->getAttributes());
     }
 }

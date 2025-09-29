@@ -4,11 +4,38 @@
     </x-slot>
 
     <div class="max-w-5xl mx-auto space-y-6">
+        {{-- Flash --}}
         @if (session('ok'))
             <div class="p-3 rounded bg-green-50 text-green-700 border border-green-200">
                 {{ session('ok') }}
             </div>
         @endif
+
+        {{-- ================= VARIABEL STATUS (PENDAFTARAN & DAFTAR ULANG) ================= --}}
+        @php
+            // Pendaftaran
+            $statusP   = $bayarP->status ?? null; // accepted|pending|rejected|null
+            $labelP    = $statusP ? ucfirst($statusP) : 'Belum ada';
+            $noteP     = $bayarP->note ?? $bayarP->catatan ?? null;
+            $badgeP    = match($statusP ?? '—') {
+                'accepted' => 'bg-green-100 text-green-700',
+                'rejected' => 'bg-red-100 text-red-700',
+                'pending'  => 'bg-yellow-100 text-yellow-700',
+                default    => 'bg-gray-100 text-gray-700'
+            };
+
+            // Daftar Ulang
+            $statusU   = $bayarU->status ?? null; // accepted|pending|rejected|null
+            $labelU    = $statusU ? ucfirst($statusU) : 'Belum ada';
+            $noteU     = $bayarU->note ?? $bayarU->catatan ?? null;
+            $badgeU    = match($statusU ?? '—') {
+                'accepted' => 'bg-green-100 text-green-700',
+                'rejected' => 'bg-red-100 text-red-700',
+                'pending'  => 'bg-yellow-100 text-yellow-700',
+                default    => 'bg-gray-100 text-gray-700'
+            };
+            $canUploadDU = $statusU !== 'accepted'; // nonaktif jika sudah diterima
+        @endphp
 
         {{-- ================= KARTU TAGIHAN DAFTAR ULANG (STATIS) ================= --}}
         @php
@@ -86,29 +113,25 @@
         </section>
 
         {{-- ================= RINGKASAN PEMBAYARAN PENDAFTARAN ================= --}}
-        @php
-            $badgeP = match($bayarP->status ?? '—') {
-                'accepted' => 'bg-green-100 text-green-700',
-                'rejected' => 'bg-red-100 text-red-700',
-                'pending'  => 'bg-yellow-100 text-yellow-700',
-                default    => 'bg-gray-100 text-gray-700'
-            };
-            $labelP = $bayarP->status ?? 'Belum ada';
-        @endphp
-
         <section class="bg-white rounded-lg shadow">
             <div class="px-6 py-5 border-b flex items-center justify-between">
                 <h3 class="font-semibold text-lg">Pembayaran Pendaftaran</h3>
                 <div class="text-sm">
                     <span class="text-gray-600 mr-2">Status:</span>
-                    <span class="inline-flex items-center px-2 py-0.5 rounded {{ $badgeP }}">{{ ucfirst($labelP) }}</span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded {{ $badgeP }}">{{ $labelP }}</span>
                     @if($bayarP?->foto_bukti)
                         <a href="{{ asset('storage/'.$bayarP->foto_bukti) }}" target="_blank"
                            class="ml-3 text-indigo-600 hover:underline">Lihat bukti</a>
                     @endif
                 </div>
             </div>
-            <div class="px-6 py-5">
+            <div class="px-6 py-5 space-y-3">
+                @if(($statusP === 'pending' || $statusP === 'rejected') && $noteP)
+                    <div class="p-3 rounded border border-yellow-200 bg-yellow-50 text-yellow-800 text-sm">
+                        Catatan admin: {{ $noteP }}
+                    </div>
+                @endif
+
                 <p class="text-xs text-gray-500">
                     * Upload/ganti bukti pendaftaran ada di halaman
                     <a href="{{ route('pendaftar.jadwal') }}" class="text-indigo-600 hover:underline">Jadwal Seleksi</a>.
@@ -117,23 +140,12 @@
         </section>
 
         {{-- ================= PEMBAYARAN DAFTAR ULANG (UPLOAD) ================= --}}
-        @php
-            $canUploadDU = !($bayarU && $bayarU->status === 'accepted');
-            $badgeU = match($bayarU->status ?? '—') {
-                'accepted' => 'bg-green-100 text-green-700',
-                'rejected' => 'bg-red-100 text-red-700',
-                'pending'  => 'bg-yellow-100 text-yellow-700',
-                default    => 'bg-gray-100 text-gray-700'
-            };
-            $labelU = $bayarU->status ?? 'Belum ada';
-        @endphp
-
         <section class="bg-white rounded-lg shadow">
             <div class="px-6 py-5 border-b flex items-center justify-between">
                 <h3 class="font-semibold text-lg">Pembayaran Daftar Ulang</h3>
                 <div class="text-sm">
                     <span class="text-gray-600 mr-2">Status:</span>
-                    <span class="inline-flex items-center px-2 py-0.5 rounded {{ $badgeU }}">{{ ucfirst($labelU) }}</span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded {{ $badgeU }}">{{ $labelU }}</span>
                     @if($bayarU?->foto_bukti)
                         <a href="{{ asset('storage/'.$bayarU->foto_bukti) }}" target="_blank"
                            class="ml-3 text-indigo-600 hover:underline">Lihat bukti</a>
@@ -142,9 +154,9 @@
             </div>
 
             <div class="px-6 py-5 space-y-3">
-                @if($bayarU?->status === 'rejected' && $bayarU?->catatan)
-                    <div class="p-3 rounded border border-red-200 bg-red-50 text-red-700 text-sm">
-                        Catatan admin: {{ $bayarU->catatan }}
+                @if(($statusU === 'pending' || $statusU === 'rejected') && $noteU)
+                    <div class="p-3 rounded border border-yellow-200 bg-yellow-50 text-yellow-800 text-sm">
+                        Catatan admin: {{ $noteU }}
                     </div>
                 @endif
 
@@ -166,7 +178,7 @@
 
                 @unless($canUploadDU)
                     <p class="text-xs text-gray-500">Bukti sudah diterima (accepted). Pengunggahan dinonaktifkan.</p>
-                @endunless>
+                @endunless
             </div>
         </section>
     </div>

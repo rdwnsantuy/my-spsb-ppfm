@@ -10,16 +10,16 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__ . '/../routes/console.php',
         health: '/up',
     )
-
     ->withMiddleware(function (Middleware $middleware) {
         // Register custom middleware aliases
         $middleware->alias([
-            'role' => \App\Http\Middleware\RoleMiddleware::class,
-            'form.completed'   => \App\Http\Middleware\EnsureFormCompleted::class,
-            'form.incomplete'  => \App\Http\Middleware\EnsureFormNotCompleted::class,
+            'role'            => \App\Http\Middleware\RoleMiddleware::class,
+            'form.completed'  => \App\Http\Middleware\EnsureFormCompleted::class,
+            'form.incomplete' => \App\Http\Middleware\EnsureFormNotCompleted::class,
+            // Tambahkan ini (opsional tapi disarankan)
+            'cek.akses.ujian' => \App\Http\Middleware\CekAksesUjian::class,
         ]);
     })
-
     ->withExceptions(function (Exceptions $exceptions) {
         //
     })->create();

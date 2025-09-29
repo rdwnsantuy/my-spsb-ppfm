@@ -6,6 +6,18 @@ use App\Http\Controllers\PaymentPendaftarController;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 
+// ===== Controller ujian (pendaftar) =====
+use App\Http\Controllers\Ujian\DaftarUjianController;
+use App\Http\Controllers\Ujian\PengerjaanUjianController;
+use App\Http\Controllers\Ujian\HasilUjianController;
+
+// ===== (Opsional) Controller manajemen ujian untuk admin =====
+use App\Http\Controllers\Admin\KategoriSoalController;
+use App\Http\Controllers\Admin\SoalController;
+use App\Http\Controllers\Admin\PaketUjianController;
+use App\Http\Controllers\Admin\MonitoringUjianController;
+use App\Http\Controllers\Admin\RekapUjianController;
+
 /**
  * Root
  */
@@ -54,6 +66,46 @@ Route::middleware(['auth', 'role:pendaftar'])
             Route::post('/pembayaran/{type}', [PaymentPendaftarController::class, 'store'])
                 ->whereIn('type', ['pendaftaran', 'daftar_ulang'])
                 ->name('payment.store'); // dipakai di blade: route('pendaftar.payment.store', 'pendaftaran' | 'daftar_ulang')
+
+            // ===========================
+            // UJIAN (PENDAFTAR)
+            // Syarat akses: auth + role:pendaftar + form.completed + CekAksesUjian
+            // ===========================
+            Route::prefix('ujian')->as('ujian.')
+                ->middleware(\App\Http\Middleware\CekAksesUjian::class)
+                ->group(function () {
+
+                    // Daftar paket ujian yang aktif
+                    Route::get('/', [DaftarUjianController::class, 'index'])->name('index');
+
+                    // Riwayat ujian user
+                    Route::get('/riwayat', [DaftarUjianController::class, 'history'])->name('riwayat');
+
+                    // Mulai ujian -> generate percobaan + snapshot soal
+                    Route::get('/{paket}/mulai', [PengerjaanUjianController::class, 'start'])
+                        ->whereNumber('paket')
+                        ->name('start');
+
+                    // Tampilkan soal ke-N
+                    Route::get('/{percobaan}/{urutan}', [PengerjaanUjianController::class, 'show'])
+                        ->whereNumber(['percobaan', 'urutan'])
+                        ->name('show');
+
+                    // Simpan jawaban (AJAX/POST)
+                    Route::post('/{percobaan}/simpan', [PengerjaanUjianController::class, 'saveAnswer'])
+                        ->whereNumber('percobaan')
+                        ->name('save');
+
+                    // Kumpulkan jawaban (submit)
+                    Route::post('/{percobaan}/kumpulkan', [PengerjaanUjianController::class, 'submit'])
+                        ->whereNumber('percobaan')
+                        ->name('submit');
+
+                    // Hasil ujian (pakai HasilUjianController)
+                    Route::get('/hasil/{percobaan}', [HasilUjianController::class, 'show'])
+                        ->whereNumber('percobaan')
+                        ->name('result');
+                });
         });
     });
 
@@ -77,6 +129,23 @@ Route::middleware(['auth', 'role:admin'])
         Route::post('/verifikasi-pembayaran/{jenis}/{id}/tolak',  [AdminController::class, 'tolakPembayaran'])
             ->whereIn('jenis', ['pendaftaran', 'daftar-ulang'])
             ->name('verifikasi-pembayaran.tolak');
+
+        // ===== CRUD & Monitoring Ujian (opsional aktifkan) =====
+        Route::prefix('ujian')->as('ujian.')->group(function () {
+            Route::resource('kategori-soal', KategoriSoalController::class)->parameters([
+                'kategori-soal' => 'kategori'
+            ]);
+            Route::resource('soal', SoalController::class);
+            Route::resource('paket', PaketUjianController::class);
+
+            Route::get('monitoring', [MonitoringUjianController::class, 'index'])->name('monitoring.index');
+            Route::post('monitoring/{id}/force-submit', [MonitoringUjianController::class, 'forceSubmit'])
+                ->whereNumber('id')
+                ->name('monitoring.force');
+
+            Route::get('rekap', [RekapUjianController::class, 'index'])->name('rekap.index');
+            Route::get('rekap/export', [RekapUjianController::class, 'exportCsv'])->name('rekap.export');
+        });
     });
 
 require __DIR__ . '/auth.php';

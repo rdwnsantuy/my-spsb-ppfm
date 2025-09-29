@@ -8,10 +8,12 @@ use Illuminate\View\View;
 class AppLayout extends Component
 {
     /**
-     * Get the view / contents that represents the component.
+     * Render the component using the anonymous Blade view
+     * at resources/views/components/app-layout.blade.php
      */
     public function render(): View
     {
-        return view('layouts.app');
+        // ARAHKAN KE KOMPONEN YANG BENAR (BUKAN layouts.app)
+        return view('components.app-layout');
     }
 }

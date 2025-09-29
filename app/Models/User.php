@@ -1,10 +1,16 @@
 <?php
 
 namespace App\Models;
+
 use App\Models\DataDiri;
 use App\Models\Wali;
 use App\Models\PendidikanTujuan;
 use App\Models\InformasiPsb;
+
+// ⬇️ Tambahan import untuk relasi ujian
+use App\Models\PercobaanUjian;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -46,21 +52,28 @@ class User extends Authenticatable
     {
         return $this->role === self::ROLE_ADMIN;
     }
+
     public function isPendaftar(): bool
     {
         return $this->role === self::ROLE_PENDAFTAR;
     }
 
     public function hasCompletedForm(): bool
-{
-    $uid = $this->id;
+    {
+        $uid = $this->id;
 
-    // Logika minimum kelengkapan (silakan sesuaikan kalau mau):
-    $hasDataDiri   = DataDiri::where('user_id', $uid)->exists();
-    $hasWali       = Wali::where('user_id', $uid)->exists();
-    $hasTujuan     = PendidikanTujuan::where('user_id', $uid)->exists();
-    $hasInfoPsb    = InformasiPsb::where('user_id', $uid)->exists();
+        // Logika minimum kelengkapan (silakan sesuaikan kalau mau):
+        $hasDataDiri   = DataDiri::where('user_id', $uid)->exists();
+        $hasWali       = Wali::where('user_id', $uid)->exists();
+        $hasTujuan     = PendidikanTujuan::where('user_id', $uid)->exists();
+        $hasInfoPsb    = InformasiPsb::where('user_id', $uid)->exists();
 
-    return $hasDataDiri && $hasWali && $hasTujuan && $hasInfoPsb;
-}
+        return $hasDataDiri && $hasWali && $hasTujuan && $hasInfoPsb;
+    }
+
+    // ===== Tambahan: Relasi ke percobaan ujian (attempt) =====
+    public function percobaanUjian(): HasMany
+    {
+        return $this->hasMany(PercobaanUjian::class, 'user_id');
+    }
 }

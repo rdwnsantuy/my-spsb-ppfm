@@ -6,29 +6,42 @@
     </x-slot>
 
     @php
-        // guard untuk kasus view dipanggil tanpa variabel controller
-        $isEdit = $isEdit ?? request()->routeIs('pendaftar.data-pendaftar.edit');
+        // Guard nilai dari controller (aman jika view dipanggil langsung)
+        $isEdit     = $isEdit     ?? request()->routeIs('pendaftar.data-pendaftar.edit');
         $formAction = $isEdit
             ? route('pendaftar.data-pendaftar.update')
             : route('pendaftar.daftar.store');
-        $backUrl = $isEdit
+        $backUrl    = $isEdit
             ? route('pendaftar.data-pendaftar')
             : route('pendaftar.daftar');
 
-        // nilai tanggal format Y-m-d supaya input date tidak minta isi ulang
+        // Nilai tanggal (Y-m-d) agar input date tidak minta isi ulang
         $valTanggal = old('tanggal_lahir')
             ?? ($valTanggal ?? (optional($dataDiri ?? null)->tanggal_lahir
                 ? \Illuminate\Support\Carbon::parse($dataDiri->tanggal_lahir)->format('Y-m-d')
                 : ''));
-        // dianggap sudah isi bila salah satu entitas ada
+
+        // Dianggap sudah isi bila salah satu entitas ada
         $sudahIsi = ($dataDiri ?? null) || ($wali ?? null) || ($tujuan ?? null) || ($psb ?? null) || ($prestasi ?? null) || ($kebutuhan ?? null);
     @endphp
 
     <div class="max-w-5xl mx-auto">
-        {{-- flash sukses --}}
+        {{-- Flash sukses --}}
         @if (session('ok'))
             <div class="mb-4 p-3 rounded bg-green-50 text-green-700 border border-green-200">
                 {{ session('ok') }}
+            </div>
+        @endif
+
+        {{-- Error summary (opsional tapi membantu) --}}
+        @if ($errors->any())
+            <div class="mb-4 p-3 rounded bg-red-50 text-red-700 border border-red-200">
+                <div class="font-medium mb-1">Periksa kembali isian kamu:</div>
+                <ul class="list-disc list-inside text-sm space-y-0.5">
+                    @foreach ($errors->all() as $err)
+                        <li>{{ $err }}</li>
+                    @endforeach
+                </ul>
             </div>
         @endif
 
@@ -41,14 +54,14 @@
                 <a href="{{ $backUrl }}"
                    class="inline-flex items-center px-3 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M10.828 12 16.95 5.879a1 1 0 1 0-1.414-1.415l-7.07 7.072a1 1 0 0 0 0 1.414l7.07 7.072a1 1 0 1 0 1.414-1.415L10.828 12Z"/>
+                        <path d="M10.828 12 16.95 5.879a1 1 0 1 0-1.414-1.415l-7.07 7.072a1 1 0 0 0 0 1.414l7.07 7.072a1 1 0 1 0 1.414-1.415L10.828 12Z" />
                     </svg>
                     Kembali
                 </a>
                 <button form="form-daftar" type="submit"
                         class="inline-flex items-center px-4 py-2 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M9 16.17 5.53 12.7a1 1 0 1 0-1.41 1.41l4.17 4.17a1 1 0 0 0 1.41 0l9.17-9.17a1 1 0 1 0-1.41-1.41L9 16.17Z"/>
+                        <path d="M9 16.17 5.53 12.7a1 1 0 1 0-1.41 1.41l4.17 4.17a1 1 0 0 0 1.41 0l9.17-9.17a1 1 0 1 0-1.41-1.41L9 16.17Z" />
                     </svg>
                     Simpan
                 </button>
@@ -66,7 +79,7 @@
                     <div>
                         <label class="block text-sm text-gray-700">Nama Wali</label>
                         <input name="nama_wali" type="text" class="mt-1 w-full rounded border-gray-300"
-                               value="{{ old('nama_wali', $wali->nama_wali ?? '') }}" required>
+                               value="{{ old('nama_wali', $wali->nama_wali ?? '') }}" required autocomplete="name">
                         @error('nama_wali')<div class="text-red-600 text-sm">{{ $message }}</div>@enderror
                     </div>
                     <div>
@@ -81,14 +94,15 @@
                     </div>
                     <div>
                         <label class="block text-sm text-gray-700">Rerata Penghasilan (Rp/bln)</label>
-                        <input name="rerata_penghasilan" type="number" min="0" class="mt-1 w-full rounded border-gray-300"
+                        <input name="rerata_penghasilan" type="number" min="0" inputmode="numeric"
+                               class="mt-1 w-full rounded border-gray-300"
                                value="{{ old('rerata_penghasilan', $wali->rerata_penghasilan ?? '') }}">
                         @error('rerata_penghasilan')<div class="text-red-600 text-sm">{{ $message }}</div>@enderror
                     </div>
                     <div>
                         <label class="block text-sm text-gray-700">No. Telepon Wali</label>
                         <input name="no_telp_wali" type="text" class="mt-1 w-full rounded border-gray-300"
-                               value="{{ old('no_telp_wali', $wali->no_telp ?? '') }}">
+                               value="{{ old('no_telp_wali', $wali->no_telp ?? '') }}" autocomplete="tel">
                         @error('no_telp_wali')<div class="text-red-600 text-sm">{{ $message }}</div>@enderror
                     </div>
                 </div>
@@ -101,7 +115,7 @@
                     <div>
                         <label class="block text-sm text-gray-700">Nama Lengkap</label>
                         <input name="nama_lengkap" type="text" class="mt-1 w-full rounded border-gray-300"
-                               value="{{ old('nama_lengkap', $dataDiri->nama_lengkap ?? auth()->user()->name) }}" required>
+                               value="{{ old('nama_lengkap', $dataDiri->nama_lengkap ?? auth()->user()->name) }}" required autocomplete="name">
                         @error('nama_lengkap')<div class="text-red-600 text-sm">{{ $message }}</div>@enderror
                     </div>
                     <div>
@@ -128,29 +142,31 @@
                     <div>
                         <label class="block text-sm text-gray-700">NISN</label>
                         <input name="nisn" type="text" class="mt-1 w-full rounded border-gray-300"
-                               value="{{ old('nisn', $dataDiri->nisn ?? '') }}">
+                               value="{{ old('nisn', $dataDiri->nisn ?? '') }}" inputmode="numeric">
                         @error('nisn')<div class="text-red-600 text-sm">{{ $message }}</div>@enderror
                     </div>
                     <div>
                         <label class="block text-sm text-gray-700">Alamat Domisili</label>
                         <input name="alamat_domisili" type="text" class="mt-1 w-full rounded border-gray-300"
-                               value="{{ old('alamat_domisili', $dataDiri->alamat_domisili ?? '') }}" required>
+                               value="{{ old('alamat_domisili', $dataDiri->alamat_domisili ?? '') }}" required autocomplete="street-address">
                         @error('alamat_domisili')<div class="text-red-600 text-sm">{{ $message }}</div>@enderror
                     </div>
                     <div>
                         <label class="block text-sm text-gray-700">Foto Diri (jpg/png/webp, max 2MB)</label>
-                        <input name="foto_diri" type="file" accept=".jpg,.jpeg,.png,.webp" class="mt-1 w-full rounded border-gray-300">
+                        <input name="foto_diri" type="file" accept=".jpg,.jpeg,.png,.webp"
+                               class="mt-1 w-full rounded border-gray-300">
                         @error('foto_diri')<div class="text-red-600 text-sm">{{ $message }}</div>@enderror
                     </div>
                     <div>
                         <label class="block text-sm text-gray-700">Foto KK (jpg/png/webp/pdf, max 4MB)</label>
-                        <input name="foto_kk" type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" class="mt-1 w-full rounded border-gray-300">
+                        <input name="foto_kk" type="file" accept=".jpg,.jpeg,.png,.webp,.pdf"
+                               class="mt-1 w-full rounded border-gray-300">
                         @error('foto_kk')<div class="text-red-600 text-sm">{{ $message }}</div>@enderror
                     </div>
                     <div class="sm:col-span-2">
                         <label class="block text-sm text-gray-700">No. KK</label>
                         <input name="no_kk" type="text" class="mt-1 w-full rounded border-gray-300"
-                               value="{{ old('no_kk', $dataDiri->no_kk ?? '') }}">
+                               value="{{ old('no_kk', $dataDiri->no_kk ?? '') }}" inputmode="numeric">
                         @error('no_kk')<div class="text-red-600 text-sm">{{ $message }}</div>@enderror
                     </div>
                 </div>
@@ -161,11 +177,15 @@
                 <h3 class="font-semibold text-lg mb-4">Pendidikan Tujuan</h3>
                 <div class="grid sm:grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-sm text-gray-700">Pendidikan Tujuan</label>
-                        <select name="pendidikan_tujuan" class="mt-1 w-full rounded border-gray-300" required>
+                        <label class="block text-sm text-gray-700" for="pendidikan_tujuan">Pendidikan Tujuan</label>
+                        <select name="pendidikan_tujuan" id="pendidikan_tujuan"
+                                class="mt-1 w-full rounded border-gray-300" required>
                             <option value="">— Pilih —</option>
-                            @foreach($optPendidikanTujuan as $opt)
-                                <option value="{{ $opt }}" @selected(old('pendidikan_tujuan', $tujuan->pendidikan_tujuan ?? '') === $opt)>{{ $opt }}</option>
+                            @foreach($optPendidikanTujuan as $val)
+                                <option value="{{ $val }}"
+                                    {{ old('pendidikan_tujuan', $tujuan->pendidikan_tujuan ?? '') === $val ? 'selected' : '' }}>
+                                    {{ $optPendidikanTujuanLabel[$val] ?? $val }}
+                                </option>
                             @endforeach
                         </select>
                         @error('pendidikan_tujuan')<div class="text-red-600 text-sm">{{ $message }}</div>@enderror
@@ -221,7 +241,8 @@
                 <div class="grid sm:grid-cols-2 gap-4">
                     <div class="sm:col-span-2">
                         <label class="block text-sm text-gray-700">Deskripsi</label>
-                        <textarea name="deskripsi" class="mt-1 w-full rounded border-gray-300" rows="3">{{ old('deskripsi', $kebutuhan->deskripsi ?? '') }}</textarea>
+                        <textarea name="deskripsi" rows="3"
+                                  class="mt-1 w-full rounded border-gray-300">{{ old('deskripsi', $kebutuhan->deskripsi ?? '') }}</textarea>
                         @error('deskripsi')<div class="text-red-600 text-sm">{{ $message }}</div>@enderror
                     </div>
                     <div>

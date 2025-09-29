@@ -4,9 +4,20 @@
     </x-slot>
 
     <div class="max-w-5xl mx-auto space-y-6">
+        {{-- Flash message --}}
         @if (session('ok'))
             <div class="p-3 rounded bg-green-50 text-green-700 border border-green-200">
                 {{ session('ok') }}
+            </div>
+        @endif
+
+        {{-- ====== ALERT BLOKIR AKSES (dari controller) ====== --}}
+        @if (!empty($blocked) && $blocked)
+            <div class="p-3 rounded bg-yellow-50 text-yellow-800 border border-yellow-200">
+                {{ $reason ?? 'Akses ke ujian belum dibuka.' }}
+                @if (!empty($note))
+                    <div class="mt-1 text-sm">Catatan admin: <span class="font-medium">{{ $note }}</span></div>
+                @endif
             </div>
         @endif
 
@@ -18,6 +29,19 @@
                 ['145789276543862', 'BRI'],
                 ['1457629875', 'BNI'],
             ];
+
+            // Status pembayaran pendaftaran
+            $status   = $bayarP->status ?? null; // accepted | pending | rejected | null
+            $noteText = $bayarP->note ?? $bayarP->catatan ?? null;
+
+            $badge = match($status ?? '—') {
+                'accepted' => 'bg-green-100 text-green-700',
+                'rejected' => 'bg-red-100 text-red-700',
+                'pending'  => 'bg-yellow-100 text-yellow-700',
+                default    => 'bg-gray-100 text-gray-700'
+            };
+            $label = $status ? ucfirst($status) : 'Belum ada';
+            $canUploadPendaftaran = $status !== 'accepted'; // hanya disable jika sudah diterima
         @endphp
 
         <section class="bg-white rounded-lg shadow overflow-hidden">
@@ -41,10 +65,27 @@
                                 <td class="px-4 py-3">Registrasi Pendaftaran Santri Baru</td>
                                 <td class="px-4 py-3 font-medium">{{ $biayaPendaftaran }}</td>
                                 <td class="px-4 py-3">
-                                    <span class="inline-flex items-center gap-2 text-orange-600">
-                                        <span class="h-2.5 w-2.5 rounded-full bg-orange-500"></span>
-                                        Harus Dibayarkan
-                                    </span>
+                                    @if ($status === 'accepted')
+                                        <span class="inline-flex items-center gap-2 text-green-700">
+                                            <span class="h-2.5 w-2.5 rounded-full bg-green-600"></span>
+                                            Lunas (Diterima)
+                                        </span>
+                                    @elseif ($status === 'pending')
+                                        <span class="inline-flex items-center gap-2 text-yellow-700">
+                                            <span class="h-2.5 w-2.5 rounded-full bg-yellow-500"></span>
+                                            Menunggu Verifikasi
+                                        </span>
+                                    @elseif ($status === 'rejected')
+                                        <span class="inline-flex items-center gap-2 text-red-700">
+                                            <span class="h-2.5 w-2.5 rounded-full bg-red-600"></span>
+                                            Ditolak (Unggah Ulang)
+                                        </span>
+                                    @else
+                                        <span class="inline-flex items-center gap-2 text-gray-700">
+                                            <span class="h-2.5 w-2.5 rounded-full bg-gray-500"></span>
+                                            Harus Dibayarkan
+                                        </span>
+                                    @endif
                                 </td>
                             </tr>
                         </tbody>
@@ -86,23 +127,12 @@
         </section>
 
         {{-- ================= BLOK PEMBAYARAN PENDAFTARAN ================= --}}
-        @php
-            $canUploadPendaftaran = !($bayarP && $bayarP->status === 'accepted');
-            $badge = match($bayarP->status ?? '—') {
-                'accepted' => 'bg-green-100 text-green-700',
-                'rejected' => 'bg-red-100 text-red-700',
-                'pending'  => 'bg-yellow-100 text-yellow-700',
-                default    => 'bg-gray-100 text-gray-700'
-            };
-            $label = $bayarP->status ?? 'Belum ada';
-        @endphp
-
         <section class="bg-white rounded-lg shadow">
             <div class="px-6 py-5 border-b flex items-center justify-between">
                 <h3 class="font-semibold text-lg">Pembayaran Pendaftaran</h3>
                 <div class="text-sm">
                     <span class="text-gray-600 mr-2">Status:</span>
-                    <span class="inline-flex items-center px-2 py-0.5 rounded {{ $badge }}">{{ ucfirst($label) }}</span>
+                    <span class="inline-flex items-center px-2 py-0.5 rounded {{ $badge }}">{{ $label }}</span>
                     @if($bayarP?->foto_bukti)
                         <a href="{{ asset('storage/'.$bayarP->foto_bukti) }}" target="_blank"
                            class="ml-3 text-indigo-600 hover:underline">Lihat bukti</a>
@@ -111,9 +141,9 @@
             </div>
 
             <div class="px-6 py-5 space-y-3">
-                @if($bayarP?->status === 'rejected' && $bayarP?->catatan)
-                    <div class="p-3 rounded border border-red-200 bg-red-50 text-red-700 text-sm">
-                        Catatan admin: {{ $bayarP->catatan }}
+                @if(($status === 'rejected' || $status === 'pending') && $noteText)
+                    <div class="p-3 rounded border border-yellow-200 bg-yellow-50 text-yellow-800 text-sm">
+                        Catatan admin: {{ $noteText }}
                     </div>
                 @endif
 
@@ -139,10 +169,24 @@
             </div>
         </section>
 
-        {{-- ================= DAFTAR JADWAL (placeholder) ================= --}}
+        {{-- ================= DAFTAR JADWAL / AKSI UJIAN ================= --}}
         <section class="bg-white rounded-lg shadow p-6">
-            <h3 class="font-semibold text-lg">Daftar Jadwal</h3>
-            <p class="text-sm text-gray-600 mt-2">Jadwal seleksi kamu akan muncul di sini.</p>
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="font-semibold text-lg">Daftar Jadwal</h3>
+                    <p class="text-sm text-gray-600 mt-1">Jadwal seleksi kamu akan muncul di sini.</p>
+                </div>
+
+                {{-- Tampilkan tombol "Buka Ujian" jika tidak diblokir --}}
+                @if (empty($blocked) || !$blocked)
+                    @if (function_exists('route') && \Illuminate\Support\Facades\Route::has('pendaftar.ujian.index'))
+                        <a href="{{ route('pendaftar.ujian.index') }}"
+                           class="inline-flex items-center px-4 py-2 rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
+                            Buka Ujian
+                        </a>
+                    @endif
+                @endif
+            </div>
         </section>
     </div>
 </x-app-layout>

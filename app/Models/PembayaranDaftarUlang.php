@@ -7,21 +7,22 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PembayaranDaftarUlang extends Model
 {
-    // protected $table = 'pembayaran_daftar_ulang';
+    // default table name sudah cocok: pembayaran_daftar_ulangs
 
-    protected $fillable = [     // ← pastikan ada foto_bukti
+    protected $fillable = [
         'user_id',
         'foto_bukti',
-        'status',
+        'status',       // 'pending' | 'accepted' | 'rejected'
         'verified_by',
         'verified_at',
-        'note',
+        'note',         // <- kolom catatan sesuai DB
     ];
 
     protected $casts = [
         'verified_at' => 'datetime',
     ];
 
+    /* ========= Relasi ========= */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
@@ -32,7 +33,8 @@ class PembayaranDaftarUlang extends Model
         return $this->belongsTo(User::class, 'verified_by');
     }
 
-    public function scopePending($q){ return $q->where('status', 'pending'); }
-    public function scopeApproved($q){ return $q->where('status', 'approved'); }
-    public function scopeRejected($q){ return $q->where('status', 'rejected'); }
+    /* ========= Scopes (konsisten dgn enum) ========= */
+    public function scopePending($q)  { return $q->where('status', 'pending'); }
+    public function scopeAccepted($q) { return $q->where('status', 'accepted'); }
+    public function scopeRejected($q) { return $q->where('status', 'rejected'); }
 }
