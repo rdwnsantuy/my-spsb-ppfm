@@ -33,7 +33,8 @@ class PengerjaanUjianController extends Controller
         // Cek periode aktif
         $now = now();
         if (($paketUjian->mulai_pada && $now->lt($paketUjian->mulai_pada)) ||
-            ($paketUjian->selesai_pada && $now->gt($paketUjian->selesai_pada))) {
+            ($paketUjian->selesai_pada && $now->gt($paketUjian->selesai_pada))
+        ) {
             return back()->with('error', 'Paket ujian belum/tidak lagi aktif.');
         }
 
@@ -106,93 +107,119 @@ class PengerjaanUjianController extends Controller
      * Tampilkan 1 soal (berdasarkan urutan).
      */
     public function show(Request $request, int $percobaan, int $urutan)
-{
-    $user = $request->user();
+    {
+        $user = $request->user();
 
-    $attempt = \App\Models\PercobaanUjian::with(['paket'])
-        ->where('id', $percobaan)
-        ->where('user_id', $user->id)
-        ->firstOrFail();
+        $attempt = \App\Models\PercobaanUjian::with(['paket'])
+            ->where('id', $percobaan)
+            ->where('user_id', $user->id)
+            ->firstOrFail();
 
-    // Jika waktu habis → expire & arahkan ke hasil
-    if ($attempt->status === 'berlangsung' &&
-        $attempt->selesai_pada &&
-        now()->gt($attempt->selesai_pada)) {
-        $this->forceExpire($attempt);
-        return redirect()->route('pendaftar.ujian.result', $attempt->id)
-            ->with('warning', 'Waktu ujian telah habis.');
+        // Jika waktu habis → expire & arahkan ke hasil
+        if (
+            $attempt->status === 'berlangsung' &&
+            $attempt->selesai_pada &&
+            now()->gt($attempt->selesai_pada)
+        ) {
+            $this->forceExpire($attempt);
+            return redirect()->route('pendaftar.ujian.result', $attempt->id)
+                ->with('warning', 'Waktu ujian telah habis.');
+        }
+
+        if (! in_array($attempt->status, ['berlangsung', 'dibuat'])) {
+            return redirect()->route('pendaftar.ujian.result', $attempt->id);
+        }
+
+        // Pastikan snapshot ada
+        $total = \App\Models\JawabanUjian::where('percobaan_id', $attempt->id)->count();
+        if ($total === 0) {
+            return redirect()->route('pendaftar.ujian.start', $attempt->paket_id)
+                ->with('error', 'Snapshot soal belum tersedia. Silakan mulai ulang ujian.');
+        }
+
+        // Clamp urutan agar 1..$total
+        $urutan = max(1, min($urutan, $total));
+
+        $item = \App\Models\JawabanUjian::where('percobaan_id', $attempt->id)
+            ->where('urutan_soal', $urutan)
+            ->first();
+
+        if (! $item) {
+            // fallback aman ke soal pertama
+            return redirect()->route('pendaftar.ujian.show', [$attempt->id, 1]);
+        }
+
+        $allowBack = (bool) $attempt->paket->boleh_kembali;
+        $prev = $allowBack ? max(1, $urutan - 1) : null;
+        $next = ($urutan < $total) ? $urutan + 1 : null;
+
+        return view('pendaftar.ujian.kerjakan', [
+            'attempt'   => $attempt,
+            'item'      => $item,
+            'total'     => $total,
+            'urutan'    => $urutan,
+            'prev'      => $prev,
+            'next'      => $next,
+            'allowBack' => $allowBack,
+            'sisaDetik' => max(0, optional($attempt->selesai_pada)->diffInSeconds(now(), false) * -1),
+        ]);
     }
-
-    if (! in_array($attempt->status, ['berlangsung', 'dibuat'])) {
-        return redirect()->route('pendaftar.ujian.result', $attempt->id);
-    }
-
-    // Pastikan snapshot ada
-    $total = \App\Models\JawabanUjian::where('percobaan_id', $attempt->id)->count();
-    if ($total === 0) {
-        return redirect()->route('pendaftar.ujian.start', $attempt->paket_id)
-            ->with('error', 'Snapshot soal belum tersedia. Silakan mulai ulang ujian.');
-    }
-
-    // Clamp urutan agar 1..$total
-    $urutan = max(1, min($urutan, $total));
-
-    $item = \App\Models\JawabanUjian::where('percobaan_id', $attempt->id)
-        ->where('urutan_soal', $urutan)
-        ->first();
-
-    if (! $item) {
-        // fallback aman ke soal pertama
-        return redirect()->route('pendaftar.ujian.show', [$attempt->id, 1]);
-    }
-
-    $allowBack = (bool) $attempt->paket->boleh_kembali;
-    $prev = $allowBack ? max(1, $urutan - 1) : null;
-    $next = ($urutan < $total) ? $urutan + 1 : null;
-
-    return view('pendaftar.ujian.kerjakan', [
-        'attempt'   => $attempt,
-        'item'      => $item,
-        'total'     => $total,
-        'urutan'    => $urutan,
-        'prev'      => $prev,
-        'next'      => $next,
-        'allowBack' => $allowBack,
-        'sisaDetik' => max(0, optional($attempt->selesai_pada)->diffInSeconds(now(), false) * -1),
-    ]);
-}
 
 
     /**
      * Simpan jawaban untuk 1 soal (AJAX/POST normal).
      * request: opsi_dipilih = 'A'|'B'|'C'|'D'|'E'
      */
-    public function saveAnswer(Request $request, int $percobaan)
+    public function saveAnswer(Request $r, int $percobaanId)
     {
-        $request->validate([
-            'jawaban_id'   => 'required|integer',
-            'opsi_dipilih' => 'nullable|in:A,B,C,D,E',
+        $r->validate([
+            'jawaban_id'   => ['required', 'integer'],
+            'opsi_dipilih' => ['nullable', 'string', 'max:10'],
+            'urutan'       => ['nullable', 'integer'],
+            'next'         => ['nullable', 'integer'],
+            'nav'          => ['nullable', 'in:stay,next'], // stay = tetap di halaman, next = lanjut soal berikutnya
         ]);
 
-        $jawaban = JawabanUjian::where('id', $request->input('jawaban_id'))
-            ->where('percobaan_id', $percobaan)
+        $attempt = PercobaanUjian::where('id', $percobaanId)
+            ->where('user_id', Auth::id())
             ->firstOrFail();
 
-        // Pastikan milik user yang sedang login
-        $this->authorizeAttemptOwnership($jawaban->percobaan_id);
-
-        // Cek waktu
-        $attempt = PercobaanUjian::findOrFail($percobaan);
-        if ($attempt->selesai_pada && now()->gt($attempt->selesai_pada)) {
-            $this->forceExpire($attempt);
-            return response()->json(['ok' => false, 'message' => 'Waktu habis. Jawaban tidak disimpan.'], 440);
+        // (opsional) cegah update kalau sudah selesai/kadaluarsa
+        if (in_array($attempt->status, ['selesai', 'kadaluarsa'])) {
+            if ($r->expectsJson() || $r->ajax()) {
+                return response()->json(['ok' => false, 'msg' => 'Percobaan sudah ditutup.'], 422);
+            }
+            return back()->with('error', 'Percobaan sudah ditutup.');
         }
 
-        // Simpan pilihan
-        $jawaban->opsi_dipilih = $request->input('opsi_dipilih'); // boleh null (kosongkan)
+        $jawaban = JawabanUjian::where('id', $r->jawaban_id)
+            ->where('percobaan_id', $attempt->id)
+            ->firstOrFail();
+
+        // Simpan / update pilihan
+        $jawaban->opsi_dipilih = $r->filled('opsi_dipilih') ? $r->opsi_dipilih : null;
         $jawaban->save();
 
-        return response()->json(['ok' => true]);
+        // Respons untuk AJAX
+        if ($r->expectsJson() || $r->ajax()) {
+            return response()->json(['ok' => true]);
+        }
+
+        // Submit biasa: redirect sesuai tombol
+        $nav  = $r->input('nav');          // stay | next
+        $next = (int) $r->input('next');   // nomor soal berikutnya (jika ada)
+
+        if ($nav === 'next' && $next > 0) {
+            return redirect()
+                ->route('pendaftar.ujian.show', [$attempt->id, $next])
+                ->with('ok', 'Jawaban tersimpan.');
+        }
+
+        // default: tetap di soal ini
+        $urutan = (int) $r->input('urutan', 1);
+        return redirect()
+            ->route('pendaftar.ujian.show', [$attempt->id, $urutan])
+            ->with('ok', 'Jawaban tersimpan.');
     }
 
     /**
@@ -234,18 +261,20 @@ class PengerjaanUjianController extends Controller
     public function result(Request $request, int $percobaan)
     {
         $attempt = PercobaanUjian::with([
-                'paket.kategori.kategori', // paket_kategori + kategori referensinya
-                'nilaiKategori.kategori',
-                'jawaban' // jika ingin tampilkan pembahasan per butir
-            ])
+            'paket.kategori.kategori', // paket_kategori + kategori referensinya
+            'nilaiKategori.kategori',
+            'jawaban' // jika ingin tampilkan pembahasan per butir
+        ])
             ->where('id', $percobaan)
             ->where('user_id', $request->user()->id)
             ->firstOrFail();
 
         // Jika sedang berlangsung & waktu habis → expire dulu agar konsisten
-        if ($attempt->status === 'berlangsung' &&
+        if (
+            $attempt->status === 'berlangsung' &&
             $attempt->selesai_pada &&
-            now()->gt($attempt->selesai_pada)) {
+            now()->gt($attempt->selesai_pada)
+        ) {
             $this->forceExpire($attempt);
         }
 
@@ -334,7 +363,7 @@ class PengerjaanUjianController extends Controller
         if ($strategi === 'total_saja') {
             $lulus = ($total >= $ambangTotal);
         } elseif ($strategi === 'total_dan_semua_kategori') {
-            $semuaKategoriLulus = collect($nilaiKategori)->every(fn ($x) => $x['lulus'] === true);
+            $semuaKategoriLulus = collect($nilaiKategori)->every(fn($x) => $x['lulus'] === true);
             $lulus = ($total >= $ambangTotal) && $semuaKategoriLulus;
         } else {
             // strategi 'khusus' → untuk sekarang samakan dengan total_saja

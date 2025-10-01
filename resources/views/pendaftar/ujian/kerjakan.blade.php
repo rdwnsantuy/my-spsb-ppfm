@@ -5,34 +5,36 @@
         </h2>
     </x-slot>
 
+    @php
+        // Pastikan next URL selalu tersedia tanpa bergantung pada variabel controller lain
+        $hasNext = ($urutan ?? 1) < ($total ?? 1);
+        $nextUrl = $hasNext ? route('pendaftar.ujian.show', [$attempt->id, $urutan + 1]) : '';
+        // fallback opsi
+        $opsi = collect($item->opsi_snapshot ?? [])->values();
+    @endphp
+
     <div class="max-w-4xl mx-auto">
-        {{-- DEBUG SEMENTARA — hanya muncul saat APP_DEBUG=true --}}
+        {{-- DEBUG (muncul hanya saat APP_DEBUG=true) --}}
         @if (config('app.debug'))
             <div class="mb-3 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded p-3">
                 <div><strong>percobaan_id:</strong> {{ $attempt->id }}</div>
                 <div><strong>paket_id:</strong> {{ $attempt->paket_id }}</div>
                 <div><strong>urutan:</strong> {{ $urutan }} / {{ $total }}</div>
-                <div><strong>opsi_snapshot_ada:</strong> {{ ($item && !empty($item->opsi_snapshot)) ? 'ya' : 'tidak' }}</div>
+                <div><strong>opsi_snapshot_ada:</strong> {{ $opsi->isNotEmpty() ? 'ya' : 'tidak' }}</div>
                 <div><strong>waktu_selesai:</strong> {{ optional($attempt->selesai_pada)->format('d/m/Y H:i:s') ?? '—' }}</div>
                 <div><strong>sisaDetik(server):</strong> {{ $sisaDetik }}</div>
             </div>
         @endif
 
-        {{-- Flash messages --}}
+        {{-- Flash --}}
         @if (session('error'))
-            <div class="mb-4 p-3 rounded bg-red-50 text-red-700 border border-red-200">
-                {{ session('error') }}
-            </div>
+            <div class="mb-4 p-3 rounded bg-red-50 text-red-700 border border-red-200">{{ session('error') }}</div>
         @endif
         @if (session('warning'))
-            <div class="mb-4 p-3 rounded bg-yellow-50 text-yellow-700 border border-yellow-200">
-                {{ session('warning') }}
-            </div>
+            <div class="mb-4 p-3 rounded bg-yellow-50 text-yellow-700 border border-yellow-200">{{ session('warning') }}</div>
         @endif
         @if (session('ok'))
-            <div class="mb-4 p-3 rounded bg-green-50 text-green-700 border border-green-200">
-                {{ session('ok') }}
-            </div>
+            <div class="mb-4 p-3 rounded bg-green-50 text-green-700 border border-green-200">{{ session('ok') }}</div>
         @endif
 
         {{-- Info ujian + timer + status simpan --}}
@@ -55,23 +57,17 @@
               method="POST"
               action="{{ route('pendaftar.ujian.save', $attempt->id) }}"
               data-sisa="{{ $sisaDetik }}"
-              data-next-url="{{ $next ? route('pendaftar.ujian.show', [$attempt->id, $next]) : '' }}"
-              data-has-next="{{ $next ? '1' : '0' }}"
+              data-next-url="{{ $nextUrl }}"
+              data-has-next="{{ $hasNext ? '1' : '0' }}"
         >
             @csrf
             <input type="hidden" name="jawaban_id" value="{{ $item->id }}">
-            <input type="hidden" name="redirect_to" id="redirect_to" value=""> {{-- optional flag --}}
 
             <div class="bg-white rounded-lg shadow p-5 mb-4">
                 <div class="prose max-w-none">
                     {!! $item->teks_soal_snapshot !!}
                 </div>
             </div>
-
-            @php
-                // Pastikan $item->opsi_snapshot berupa array koleksi {label, teks_opsi}
-                $opsi = collect($item->opsi_snapshot ?? [])->values();
-            @endphp
 
             @if($opsi->isNotEmpty())
                 <fieldset class="space-y-3 mb-6">
@@ -101,28 +97,28 @@
             @endif
 
             <div class="flex flex-wrap gap-2">
-                @if($allowBack && $prev && $prev < $urutan)
-                    <a href="{{ route('pendaftar.ujian.show', [$attempt->id, $prev]) }}"
+                @if($allowBack && ($urutan ?? 1) > 1)
+                    <a href="{{ route('pendaftar.ujian.show', [$attempt->id, $urutan - 1]) }}"
                        class="inline-flex items-center px-4 py-2 rounded-md border text-sm">
                         Sebelumnya
                     </a>
                 @endif
 
-                @if($next)
-                    {{-- Simpan & Lanjut: autosave lalu redirect --}}
+                @if($hasNext)
+                    {{-- Simpan & Lanjut: simpan via AJAX lalu pindah --}}
                     <button type="button" id="btn-next"
                             class="inline-flex items-center px-4 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700">
                         Simpan &amp; Lanjut
                     </button>
                 @else
-                    {{-- Kumpulkan: autosave lalu submit --}}
+                    {{-- Kumpulkan: simpan dulu baru submit --}}
                     <button type="button" id="btn-submit"
                             class="inline-flex items-center px-4 py-2 rounded-md bg-green-600 text-white text-sm hover:bg-green-700">
                         Kumpulkan Jawaban
                     </button>
                 @endif
 
-                {{-- Simpan manual --}}
+                {{-- Simpan manual (AJAX, tanpa pindah halaman) --}}
                 <button type="submit"
                         class="inline-flex items-center px-4 py-2 rounded-md bg-gray-100 text-gray-700 border text-sm">
                     Simpan
@@ -136,7 +132,6 @@
         </form>
     </div>
 
-    {{-- ====== Script mini: timer, autosave, keyboard, guard ====== --}}
     <script>
         (function () {
             const form = document.getElementById('ujian-form');
@@ -145,41 +140,45 @@
             const btnNext = document.getElementById('btn-next');
             const btnSubmit = document.getElementById('btn-submit');
             const timerText = document.getElementById('timerText');
-            const saveStatusWrap = document.getElementById('saveStatus');
-            const saveStateEl = saveStatusWrap?.querySelector('[data-state]');
+            const saveStateEl = document.querySelector('#saveStatus [data-state]');
             const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+            const hasNext = form.dataset.hasNext === '1';
+            const nextUrl = form.dataset.nextUrl;
 
             let sisa = parseInt(form.dataset.sisa || '0', 10);
             let saving = false;
-            let dirty = false; // ada perubahan belum tersimpan
+            let dirty = false;
+            let jumpScheduled = null;
+            const AUTO_JUMP_AFTER_CHOICE = true; // otomatis lompat setelah pilih jawaban
 
-            function setSaveState(stateText, tone = 'idle') {
+            function setSaveState(text, tone = 'idle') {
                 if (!saveStateEl) return;
-                saveStateEl.textContent = stateText;
-                // tone: idle | saving | saved | error
-                saveStateEl.parentElement.className =
-                    'inline-flex items-center px-2 py-0.5 rounded border ' + ({
-                        'idle': 'bg-gray-100 text-gray-700 border-gray-200',
-                        'saving': 'bg-blue-50 text-blue-700 border-blue-200',
-                        'saved': 'bg-green-50 text-green-700 border-green-200',
-                        'error': 'bg-red-50 text-red-700 border-red-200',
-                    }[tone] || 'bg-gray-100 text-gray-700 border-gray-200');
+                saveStateEl.textContent = text;
+                const klass = {
+                    idle:'bg-gray-100 text-gray-700 border-gray-200',
+                    saving:'bg-blue-50 text-blue-700 border-blue-200',
+                    saved:'bg-green-50 text-green-700 border-green-200',
+                    error:'bg-red-50 text-red-700 border-red-200',
+                }[tone] || 'bg-gray-100 text-gray-700 border-gray-200';
+                saveStateEl.parentElement.className = 'inline-flex items-center px-2 py-0.5 rounded border ' + klass;
             }
 
             async function autosave() {
                 if (saving) return;
                 saving = true;
                 setSaveState('Menyimpan…', 'saving');
-
                 try {
                     const fd = new FormData(form);
                     const res = await fetch(form.action, {
                         method: 'POST',
-                        headers: token ? { 'X-CSRF-TOKEN': token } : {},
+                        headers: Object.assign(
+                            { 'X-Requested-With': 'XMLHttpRequest' },
+                            token ? { 'X-CSRF-TOKEN': token } : {}
+                        ),
                         body: fd
                     });
                     if (!res.ok) throw new Error('HTTP ' + res.status);
-                    // sukses
                     dirty = false;
                     setSaveState('Tersimpan', 'saved');
                 } catch (e) {
@@ -190,43 +189,44 @@
                 }
             }
 
-            // Debounce kecil untuk autosave
-            let debounce;
-            function scheduleAutosave() {
-                clearTimeout(debounce);
-                debounce = setTimeout(autosave, 500);
-            }
+            // Cegah submit default (yang biasa menampilkan {"ok":true})
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                autosave();
+            });
 
-            // Tandai dirty bila pilihan berubah
+            // Jadwalkan simpan ketika pilihan berubah (dan auto-advance jika diaktifkan)
             radios.forEach(r => {
                 r.addEventListener('change', () => {
                     dirty = true;
-                    scheduleAutosave();
+                    // simpan cepat
+                    autosave();
+
+                    if (AUTO_JUMP_AFTER_CHOICE && hasNext && nextUrl) {
+                        clearTimeout(jumpScheduled);
+                        jumpScheduled = setTimeout(async () => {
+                            if (dirty) await autosave();
+                            window.location.assign(nextUrl);
+                        }, 250);
+                    }
                 });
             });
 
-            // Tombol Next: pastikan simpan dulu
+            // Tombol "Simpan & Lanjut"
             btnNext?.addEventListener('click', async () => {
-                const nextUrl = form.dataset.nextUrl;
-                if (!nextUrl) return;
-                if (dirty) {
-                    await autosave();
-                }
-                window.location.assign(nextUrl);
+                if (dirty) await autosave();
+                if (nextUrl) window.location.assign(nextUrl);
             });
 
-            // Tombol Submit: simpan dulu kalau perlu, lalu submit
+            // Tombol "Kumpulkan"
             btnSubmit?.addEventListener('click', async () => {
-                if (dirty) {
-                    await autosave();
-                }
+                if (dirty) await autosave();
                 submitForm.submit();
             });
 
-            // Timer countdown (auto-submit jika habis)
+            // Timer countdown (auto-submit ketika habis)
             function tick() {
                 if (sisa <= 0) {
-                    // Habis waktu: matikan interaksi dan submit
                     radios.forEach(r => r.disabled = true);
                     btnNext && (btnNext.disabled = true);
                     btnSubmit && (btnSubmit.disabled = true);
@@ -242,7 +242,7 @@
             }
             setTimeout(tick, 1000);
 
-            // Peringatan saat mau keluar halaman kalau belum tersimpan
+            // Peringatan saat mau keluar halaman kalau ada perubahan belum tersimpan
             window.addEventListener('beforeunload', (e) => {
                 if (dirty) {
                     e.preventDefault();
@@ -250,11 +250,11 @@
                 }
             });
 
-            // Keyboard shortcuts: A/B/C/D/E untuk pilih, S simpan, Enter = next/submit
+            // Shortcuts: A/B/C/D/E untuk pilih, S = simpan, Enter = Next/Submit
             document.addEventListener('keydown', (e) => {
                 const key = e.key.toLowerCase();
                 const map = { a:'A', b:'B', c:'C', d:'D', e:'E' };
-                if (key in map) {
+                if (map[key]) {
                     const target = Array.from(radios).find(r => r.value.toUpperCase() === map[key]);
                     if (target && !target.disabled) {
                         target.checked = true;
