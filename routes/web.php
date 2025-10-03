@@ -76,33 +76,33 @@ Route::middleware(['auth', 'role:pendaftar'])
                 ->group(function () {
 
                     // Daftar paket ujian + riwayat
-                    Route::get('/',         [DaftarUjianController::class, 'index'])->name('index');
-                    Route::get('/riwayat',  [DaftarUjianController::class, 'history'])->name('riwayat');
+                    Route::get('/',        [DaftarUjianController::class, 'index'])->name('index');
+                    Route::get('/riwayat', [DaftarUjianController::class, 'history'])->name('riwayat');
 
                     // Mulai ujian -> generate percobaan + snapshot soal
                     Route::get('/{paket}/mulai', [PengerjaanUjianController::class, 'start'])
                         ->whereNumber('paket')
                         ->name('start');
 
+                    // Hasil ujian (letakkan SEBELUM rute dinamis lainnya untuk aman)
+                    Route::get('/hasil/{percobaan}', [HasilUjianController::class, 'show'])
+                        ->whereNumber('percobaan')
+                        ->name('result');
+
                     // Tampilkan soal ke-N
                     Route::get('/{percobaan}/{urutan}', [PengerjaanUjianController::class, 'show'])
                         ->whereNumber(['percobaan', 'urutan'])
                         ->name('show');
 
-                    // Simpan jawaban (POST)
+                    // Simpan jawaban 1 soal (AJAX / non-AJAX)
                     Route::post('/{percobaan}/simpan', [PengerjaanUjianController::class, 'saveAnswer'])
                         ->whereNumber('percobaan')
-                        ->name('save'); // dipakai di Blade: route('pendaftar.ujian.save', $attempt->id)
+                        ->name('save'); // route('pendaftar.ujian.save', $attempt->id)
 
-                    // Kumpulkan jawaban (submit)
+                    // Kumpulkan jawaban (submit semua)
                     Route::post('/{percobaan}/kumpulkan', [PengerjaanUjianController::class, 'submit'])
                         ->whereNumber('percobaan')
                         ->name('submit');
-
-                    // Hasil ujian
-                    Route::get('/hasil/{percobaan}', [HasilUjianController::class, 'show'])
-                        ->whereNumber('percobaan')
-                        ->name('result');
                 });
         });
     });
