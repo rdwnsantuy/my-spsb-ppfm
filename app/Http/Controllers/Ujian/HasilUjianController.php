@@ -17,34 +17,34 @@ class HasilUjianController extends Controller
     /**
      * Tampilkan hasil 1 percobaan ujian milik user yang login.
      *
-     * Route disarankan:
+     * Rute disarankan:
      *   GET /pendaftar/ujian/hasil/{percobaan}
      *   -> name: pendaftar.ujian.result
-     *   -> param {percobaan} di-bind ke model PercobaanUjian
+     *   -> param {percobaan} menggunakan implicit binding ke PercobaanUjian
      */
     public function show(Request $request, PercobaanUjian $percobaan)
     {
         // Pastikan percobaan ini milik user yang login
         abort_unless($percobaan->user_id === $request->user()->id, 404);
 
-        // Jika masih berlangsung/dibuat atau waktu habis, finalisasi dulu agar skor muncul konsisten
-        if (in_array($percobaan->status, ['dibuat', 'berlangsung'])) {
+        // Jika masih berlangsung/dibuat atau waktu habis, finalisasi dulu agar skor konsisten
+        if (in_array($percobaan->status, ['dibuat', 'berlangsung'], true)) {
             $this->finalizeAttempt($percobaan);
         } elseif (
             $percobaan->selesai_pada &&
             now()->gt($percobaan->selesai_pada) &&
-            $percobaan->status !== 'kadaluarsa' &&
-            $percobaan->status !== 'selesai'
+            ! in_array($percobaan->status, ['kadaluarsa', 'selesai'], true)
         ) {
             // waktu habis tapi status belum ditandai
             $this->finalizeAttempt($percobaan, forceExpire: true);
         }
 
         // Muat relasi yang dibutuhkan view hasil
+        // PERBAIKAN: cukup sampai 'paket.kategori' (bukan 'paket.kategori.kategori')
         $percobaan->load([
-            'paket.kategori.kategori', // paket_kategori + referensi kategori
-            'nilaiKategori.kategori',  // nilai per kategori
-            'jawaban',                 // seluruh jawaban (jika ingin pakai di view)
+            'paket.kategori',         // paket_kategori -> relasi ke KategoriSoal
+            'nilaiKategori.kategori', // nilai per kategori (NilaiKategori->kategori())
+            'jawaban',                // seluruh jawaban
         ]);
 
         // Kirim ke view hasil
@@ -77,16 +77,16 @@ class HasilUjianController extends Controller
 
             foreach ($items as $item) {
                 // $item->opsi_snapshot dicast ke array di Model
-                $opsi   = collect($item->opsi_snapshot ?? []);
-                $kunci  = $opsi->firstWhere('benar', true);
-                $benar  = false;
+                $opsi  = collect($item->opsi_snapshot ?? []);
+                $kunci = $opsi->firstWhere('benar', true);
 
+                $benar = false;
                 if ($item->opsi_dipilih && $kunci) {
                     $benar = ($item->opsi_dipilih === ($kunci['label'] ?? null));
                 }
 
-                $item->benar           = $benar;                          // kolom boolean
-                $item->skor_diperoleh  = $benar ? ($item->bobot ?? 1) : 0; // skor per-butir
+                $item->benar          = $benar;                           // kolom boolean
+                $item->skor_diperoleh = $benar ? ($item->bobot ?? 1) : 0; // skor per-butir
                 $item->save();
             }
 
@@ -117,7 +117,7 @@ class HasilUjianController extends Controller
             foreach ($ringkas as $kategoriId => $val) {
                 $pk     = $pkList->get($kategoriId);
                 $bobot  = $pk ? (float) $pk->bobot_kategori : 0.0; // persen
-                $ambang = $pk && !is_null($pk->ambang_kelulusan) ? (float) $pk->ambang_kelulusan : null;
+                $ambang = $pk && ! is_null($pk->ambang_kelulusan) ? (float) $pk->ambang_kelulusan : null;
 
                 $lulusKategori = is_null($ambang) ? true : ($val['persentase'] >= $ambang);
                 $ringkas[$kategoriId]['lulus'] = $lulusKategori;

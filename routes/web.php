@@ -12,12 +12,21 @@ use App\Http\Controllers\Ujian\DaftarUjianController;
 use App\Http\Controllers\Ujian\PengerjaanUjianController;
 use App\Http\Controllers\Ujian\HasilUjianController;
 
-// ===== (Opsional) Manajemen ujian admin =====
+// ===== (Opsional) Manajemen ujian admin (tetap dipertahankan)
 use App\Http\Controllers\Admin\KategoriSoalController;
 use App\Http\Controllers\Admin\SoalController;
 use App\Http\Controllers\Admin\PaketUjianController;
 use App\Http\Controllers\Admin\MonitoringUjianController;
 use App\Http\Controllers\Admin\RekapUjianController;
+
+// ===== Halaman ringkas Soal Seleksi (lama) -> dialihkan ke halaman baru
+use App\Http\Controllers\Admin\Ujian\SoalSeleksiController;
+
+// ===== Halaman baru (sesuai konsep) Bank Soal & Bobot kategori (Single Page)
+use App\Http\Controllers\Admin\SoalAdminController;
+
+// ===== Izin Ulang Ujian (BARU)
+use App\Http\Controllers\Admin\IzinUlangController;
 
 /**
  * Root
@@ -84,7 +93,7 @@ Route::middleware(['auth', 'role:pendaftar'])
                         ->whereNumber('paket')
                         ->name('start');
 
-                    // Hasil ujian (letakkan SEBELUM rute dinamis lainnya untuk aman)
+                    // Hasil ujian
                     Route::get('/hasil/{percobaan}', [HasilUjianController::class, 'show'])
                         ->whereNumber('percobaan')
                         ->name('result');
@@ -94,10 +103,10 @@ Route::middleware(['auth', 'role:pendaftar'])
                         ->whereNumber(['percobaan', 'urutan'])
                         ->name('show');
 
-                    // Simpan jawaban 1 soal (AJAX / non-AJAX)
+                    // Simpan jawaban 1 soal
                     Route::post('/{percobaan}/simpan', [PengerjaanUjianController::class, 'saveAnswer'])
                         ->whereNumber('percobaan')
-                        ->name('save'); // route('pendaftar.ujian.save', $attempt->id)
+                        ->name('save');
 
                     // Kumpulkan jawaban (submit semua)
                     Route::post('/{percobaan}/kumpulkan', [PengerjaanUjianController::class, 'submit'])
@@ -119,19 +128,50 @@ Route::middleware(['auth', 'role:admin'])
         Route::get('/verifikasi-pembayaran', [AdminController::class, 'verifikasiPembayaran'])->name('verifikasi-pembayaran');
         Route::get('/jadwal-seleksi',        [AdminController::class, 'jadwalSeleksi'])->name('jadwal-seleksi');
         Route::get('/data-pendaftar',        [AdminController::class, 'dataPendaftar'])->name('data-pendaftar');
-        Route::get('/soal-seleksi',          [AdminController::class, 'soalSeleksi'])->name('soal-seleksi');
 
-        // Aksi verifikasi pembayaran (terima/tolak)
-        // Terima/tolak BOTH: 'daftar-ulang' & 'daftar_ulang'
-        Route::post('/verifikasi-pembayaran/{jenis}/{id}/terima', [AdminController::class, 'terimaPembayaran'])
-            ->where(['jenis' => 'pendaftaran|daftar-ulang|daftar_ulang', 'id' => '[0-9]+'])
-            ->name('verifikasi-pembayaran.terima');
+        /**
+         * ===== Halaman baru: Bank Soal & Bobot (single page bertab)
+         * URL: /admin/soal
+         * Nama route: admin.soal.*
+         */
+        Route::prefix('soal')->as('soal.')->group(function () {
+            Route::get('/', [SoalAdminController::class, 'index'])->name('index');
 
-        Route::post('/verifikasi-pembayaran/{jenis}/{id}/tolak',  [AdminController::class, 'tolakPembayaran'])
-            ->where(['jenis' => 'pendaftaran|daftar-ulang|daftar_ulang', 'id' => '[0-9]+'])
-            ->name('verifikasi-pembayaran.tolak');
+            // Kategori
+            Route::post('/kategori',              [SoalAdminController::class, 'storeCategory'])->name('kategori.store');
+            Route::put('/kategori/{kategori}',    [SoalAdminController::class, 'updateCategory'])->name('kategori.update');
+            Route::delete('/kategori/{kategori}', [SoalAdminController::class, 'destroyCategory'])->name('kategori.destroy');
 
-        // ===== CRUD & Monitoring Ujian (opsional aktifkan) =====
+            // Soal
+            Route::post('/item',              [SoalAdminController::class, 'storeQuestion'])->name('item.store');
+            Route::put('/item/{soal}',        [SoalAdminController::class, 'updateQuestion'])->name('item.update');
+            Route::delete('/item/{soal}',     [SoalAdminController::class, 'destroyQuestion'])->name('item.destroy');
+
+            // Bobot kategori per paket
+            Route::post('/bobot',             [SoalAdminController::class, 'storeWeight'])->name('bobot.store');
+            Route::put('/bobot/{pivot}',      [SoalAdminController::class, 'updateWeight'])->name('bobot.update');
+            Route::delete('/bobot/{pivot}',   [SoalAdminController::class, 'destroyWeight'])->name('bobot.destroy');
+        });
+
+        /**
+         * ===== RUTE LAMA (Soal Seleksi single page) — dialihkan ke halaman baru
+         * Agar tautan lama tidak rusak dan nama route lama tetap bisa dipakai.
+         */
+        Route::get('/soal-seleksi', fn () => redirect()->route('admin.soal.index'))
+            ->name('soal-seleksi');
+
+        // Quick CRUD lama -> arahkan ke controller baru (kompatibel dengan form lama jika masih dipakai)
+        Route::post('/soal-seleksi/kategori',              [SoalAdminController::class, 'storeCategory'])->name('ujian.kategori-soal.store.quick');
+        Route::put('/soal-seleksi/kategori/{kategori}',    [SoalAdminController::class, 'updateCategory'])->name('ujian.kategori-soal.update.quick');
+        Route::delete('/soal-seleksi/kategori/{kategori}', [SoalAdminController::class, 'destroyCategory'])->name('ujian.kategori-soal.destroy.quick');
+
+        Route::post('/soal-seleksi/soal',              [SoalAdminController::class, 'storeQuestion'])->name('ujian.soal.store.quick');
+        Route::put('/soal-seleksi/soal/{soal}',        [SoalAdminController::class, 'updateQuestion'])->name('ujian.soal.update.quick');
+        Route::delete('/soal-seleksi/soal/{soal}',     [SoalAdminController::class, 'destroyQuestion'])->name('ujian.soal.destroy.quick');
+
+        /**
+         * ===== CRUD & Monitoring Ujian (halaman penuh – tetap tersedia)
+         */
         Route::prefix('ujian')->as('ujian.')->group(function () {
             Route::resource('kategori-soal', KategoriSoalController::class)->parameters([
                 'kategori-soal' => 'kategori'
@@ -146,6 +186,18 @@ Route::middleware(['auth', 'role:admin'])
             Route::get('rekap', [RekapUjianController::class, 'index'])->name('rekap.index');
             Route::get('rekap/export', [RekapUjianController::class, 'exportCsv'])->name('rekap.export');
         });
+
+        /**
+         * ===== Izin Ulang Ujian (BARU)
+         * URL: /admin/izin-ulang
+         * Nama route: admin.izinulang.*
+         */
+        Route::prefix('izin-ulang')->as('izinulang.')->group(function () {
+            Route::get('/', [IzinUlangController::class, 'index'])->name('index');
+            Route::post('/', [IzinUlangController::class, 'store'])->name('store');
+            Route::patch('/{izin}/nonaktif', [IzinUlangController::class, 'nonaktif'])
+                ->whereNumber('izin')->name('nonaktif');
+        });
     });
 
-require __DIR__.'/auth.php';
+require __DIR__ . '/auth.php';

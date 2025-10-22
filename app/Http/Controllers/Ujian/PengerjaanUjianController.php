@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\DB;
 
 // Service snapshot (sampling soal + acak opsi + relabel A–E + insert ke jawaban_ujian)
 use App\Services\UjianSnapshotService;
+// Service kuota & izin ulang (BARU)
+use App\Services\UjianQuota;
 
 // Models
 use App\Models\PaketUjian;
@@ -20,7 +22,7 @@ use App\Models\NilaiKategori;
 class PengerjaanUjianController extends Controller
 {
     /**
-     * Mulai ujian: validasi kuota attempt, generate snapshot soal, set durasi.
+     * Mulai ujian: validasi kuota attempt/izin ulang, generate snapshot soal, set durasi.
      */
     public function start(Request $request, int $paket)
     {
@@ -64,15 +66,15 @@ class PengerjaanUjianController extends Controller
             return redirect()->route('pendaftar.ujian.show', [$existing->id, $nextUrutan]);
         }
 
-        // Cek maksimal percobaan
-        if ($paketUjian->maksimal_percobaan > 0) {
-            $sudah = PercobaanUjian::where('user_id', $user->id)
-                ->where('paket_id', $paketUjian->id)
-                ->count();
-
-            if ($sudah >= $paketUjian->maksimal_percobaan) {
-                return back()->with('error', 'Maksimal percobaan ujian telah tercapai.');
-            }
+        // =========================
+        // CEK KUOTA + IZIN ULANG (BARU)
+        // =========================
+        // Logika: total allowed = paket.maksimal_percobaan + kuota_tambahan (izin admin yang masih aktif).
+        // User hanya boleh mulai attempt baru jika:
+        // - tidak ada attempt 'berlangsung' (sudah dicek di atas), DAN
+        // - usedAttempts < allowedAttempts
+        if (! UjianQuota::canStartNewAttempt($user->id, $paketUjian)) {
+            return back()->with('error', 'Kuota ujian Anda sudah habis. Hubungi panitia untuk izin ujian ulang.');
         }
 
         // Generate attempt & snapshot soal via Service
